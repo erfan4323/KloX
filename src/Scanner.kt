@@ -4,7 +4,7 @@
     private var current: Int = 0
     private var line: Int = 0
 
-    private val keywords = mutableMapOf(
+    private val keywords = mapOf(
         "and" to TokenType.AND,
         "class" to TokenType.CLASS,
         "else" to TokenType.ELSE,
@@ -25,21 +25,18 @@
 
     fun scanTokens(): MutableList<Token> {
         while (!isAtEnd()) {
-
             start = current
             scanToken()
         }
 
-        tokens.add(Token(TokenType.EOF, "", null, line))
+        tokens += Token(TokenType.EOF, "", null, line)
         return tokens
     }
 
     private fun isAtEnd(): Boolean = current >= source.length
 
     private fun scanToken() {
-        val c = advance()
-
-        when (c) {
+        when (val c = advance()) {
             '(' -> addToken(TokenType.LEFT_PAREN)
             ')' -> addToken(TokenType.RIGHT_PAREN)
             '{' -> addToken(TokenType.LEFT_BRACE)
@@ -65,41 +62,34 @@
             ' ', '\r', '\t' -> {}
             '\n' -> line++
             '"' -> string()
-            else -> {
-                if (isDigit(c)) {
-                    number()
-                }
-                else if (isAlpha(c)) {
-                    identifier()
-                }
-                else {
-                    Lox.error(line, "Unexpected character.")
-                }
+            else -> when {
+                c.isDigit() -> number()
+                c.isAlpha() -> identifier()
+                else -> Lox.error(line, "Unexpected character.")
             }
         }
     }
 
-    private fun isAlpha(c: Char): Boolean = (c in 'a'..'z') || (c in 'A'..'Z') || c == '_'
+    private fun Char.isAlpha() = this in 'a'..'z' || this in 'A'..'Z' || this == '_'
 
-    private fun isDigit(c: Char): Boolean = c in '0'..'9'
+    private fun Char.isDigit() = this in '0'..'9'
 
-    private fun isAlphaNumeric(c: Char): Boolean = isAlpha(c) || isDigit(c)
+    private fun Char.isAlphaNumeric() = isAlpha() || isDigit()
 
     private fun identifier() {
-        while (isAlphaNumeric(peek())) advance()
+        while (peek().isAlphaNumeric()) advance()
         val text = source.substring(start..current)
-        var type = keywords[text]
-        if (type == null) type = TokenType.IDENTIFIER
+        val type = keywords[text] ?: TokenType.IDENTIFIER
         addToken(type)
     }
 
     private fun number() {
-        while (isDigit(peek())) advance()
+        while (peek().isDigit()) advance()
 
         // Look for a fractional part.
-        if (peek() == '.' && isDigit(peekNext())) {
+        if (peek() == '.' && peekNext().isDigit()) {
             advance()
-            while (isDigit(peek())) advance()
+            while (peek().isDigit()) advance()
         }
 
         addToken(TokenType.NUMBER, source.substring(start..current).toDouble())
@@ -125,25 +115,12 @@
 
     private fun peekNext(): Char = if (current + 1 >= source.length) '\u0000' else source[current + 1]
 
-    private fun match(ch: Char): Boolean {
-        if (isAtEnd()) return false
-        if (source[current] != ch) return false
+    private fun match(ch: Char): Boolean = !isAtEnd() && source[current] == ch && run { current++; true }
 
-        current++
-        return true
-    }
+    private fun advance(): Char = source[current++]
 
-    private fun advance(): Char {
-        current++
-        return source[current - 1]
-    }
-
-    private fun addToken(type: TokenType) {
-        addToken(type, null)
-    }
-
-    private fun addToken(type: TokenType, literal: Any?) {
+    private fun addToken(type: TokenType, literal: Any? = null) {
         val text = source.substring(start..current)
-        tokens.add(Token(type, text, literal, line))
+        tokens += Token(type, text, literal, line)
     }
 }

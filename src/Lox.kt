@@ -7,7 +7,7 @@ import kotlin.io.path.pathString
 import kotlin.system.exitProcess
 
 class Lox() {
-    fun main(args: Array<String>) {
+    fun runMain(args: Array<String>) {
         when {
             args.size > 1 -> {
                 println("Usage: KloX [script]")
@@ -33,8 +33,8 @@ class Lox() {
     }
 
     private fun runFile(path: String) {
-        val bytes = File(Path(path).pathString).readBytes()
-        run(String(bytes, Charset.defaultCharset()))
+        val source = File(Path(path).pathString).readText(Charset.defaultCharset())
+        run(source)
 
         if (hadError) exitProcess(65)
     }
@@ -51,7 +51,7 @@ class Lox() {
         }
 
         private fun report(line: Int, where:String, message: String) {
-            println("[Line $$line] Error $where: $message")
+            println("[Line $line] Error $where: $message")
             hadError = true
         }
     }
