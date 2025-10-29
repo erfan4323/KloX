@@ -1,8 +1,5 @@
-fun main() {
-    val name = "Kotlin"
-    println("Hello, $name!")
+fun main(args: Array<String>) {
+    val lox = Lox()
 
-    for (i in 1..5) {
-        println("i = $i")
-    }
+    lox.main(args)
 }
