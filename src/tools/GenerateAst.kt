@@ -11,7 +11,7 @@ fun main(args: Array<String>) {
     defineAst(outputDir, "Expr", listOf(
         "Binary   : Expr left, Token operator, Expr right",
         "Grouping : Expr expression",
-        "Literal  : Object value",
+        "Literal  : Any? value",
         "Unary    : Token operator, Expr right"
     ))
 }
@@ -22,7 +22,7 @@ fun defineAst(outputDir: String, baseName: String, types: List<String>) {
     file.printWriter().use {writer ->
         writer.println("package lox")
         writer.println()
-        writer.println("abstract class $baseName {")
+        writer.println("sealed class $baseName {")
 
         defineVisitor(writer, baseName, types)
         writer.println()
@@ -55,7 +55,7 @@ fun defineVisitor(writer: PrintWriter, baseName: String, types: List<String>) {
 fun defineType(writer: PrintWriter, baseName: String, className: String, fieldList: String) {
     val fields = fieldList.split(", ").map { it.trim() }
 
-    writer.println("    class $className(")
+    writer.println("    data class $className(")
     fields.forEachIndexed { index, field ->
         val (type, name) = field.split(" ")
         val comma = if (index < fields.lastIndex) "," else ""
