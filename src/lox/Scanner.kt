@@ -1,4 +1,6 @@
-﻿class Scanner(val source: String) {
+﻿package lox
+
+class Scanner(val source: String) {
     private val tokens = mutableListOf<Token>()
     private var start: Int = 0
     private var current: Int = 0
