@@ -9,6 +9,8 @@ import kotlin.io.path.pathString
 import kotlin.system.exitProcess
 
 class Lox() {
+    private val interpreter = Interpreter()
+
     fun runMain(args: Array<String>) {
         when {
             args.size > 1 -> {
@@ -28,6 +30,7 @@ class Lox() {
         val reader = BufferedReader(InputStreamReader(System.`in`))
         while (true) {
             print("> ")
+            System.out.flush()
             val line = reader.readLine() ?: break
             run(line)
             hadError = false
@@ -39,6 +42,7 @@ class Lox() {
         run(source)
 
         if (hadError) exitProcess(65)
+        if (hadRuntimeError) exitProcess(70);
     }
 
     private fun run(source: String) {
@@ -49,11 +53,12 @@ class Lox() {
 
         if (hadError) return
 
-        println(expression?.let { AstPrinter().print(it) })
+        expression?.let { interpreter.interpret(it) }
     }
 
     companion object {
         private var hadError = false
+        private var hadRuntimeError = false
 
         fun error(line: Int, message: String) {
             report(line, "", message)
@@ -69,8 +74,15 @@ class Lox() {
         }
 
         private fun report(line: Int, where:String, message: String) {
-            println("[Line $line] Error $where: $message")
+            eprintln("[Line $line] Error $where: $message")
             hadError = true
         }
+
+        fun runtimeError(error: RunTimeError) {
+            eprintln("${error.message}\n[line ${error.token.line}]")
+            hadRuntimeError = true
+        }
+
+        fun eprintln(message: Any?) = System.err.println(message)
     }
 }
