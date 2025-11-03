@@ -69,7 +69,7 @@ class Lox() {
         }
 
         fun runtimeError(error: RunTimeError) {
-            eprintln("${error.message}\n[line ${error.token.line}]")
+            eprintln("[line ${error.token.line}] Runtime Error: ${error.message}")
             hadRuntimeError = true
         }
 
