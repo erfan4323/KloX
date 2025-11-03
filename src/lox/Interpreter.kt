@@ -3,10 +3,8 @@
 class Interpreter: Expr.Visitor<Any?> {
     fun interpret(expression: Expr) {
         try {
-            val value = evaluate(expression)
-            println(stringify(value))
-        }
-        catch (error: RunTimeError) {
+            evaluate(expression)?.let { println(stringify(it)) }
+        } catch (error: RunTimeError) {
             Lox.runtimeError(error)
         }
     }
@@ -16,42 +14,20 @@ class Interpreter: Expr.Visitor<Any?> {
         val right = evaluate(expr.right)
 
         return when (expr.operator.type) {
-            TokenType.MINUS -> {
-                checkNumberOperands(expr.operator, left, right)
-                (left as Double) - (right as Double)
-            }
-            TokenType.SLASH -> {
-                checkNumberOperands(expr.operator, left, right)
-                (left as Double) / (right as Double)
-            }
-            TokenType.STAR -> {
-                checkNumberOperands(expr.operator, left, right)
-                (left as Double) * (right as Double)
-            }
+            TokenType.MINUS -> (left asDouble expr.operator) - (right asDouble expr.operator)
+            TokenType.SLASH -> (left asDouble expr.operator) / (right asDouble expr.operator)
+            TokenType.STAR -> (left asDouble expr.operator) * (right asDouble expr.operator)
             TokenType.PLUS -> {
                 if (left is Double && right is Double) left + right
                 else if (left is String && right is String) left + right
                 else throw RunTimeError(expr.operator, "Operands must be two numbers or two strings.")
             }
-            TokenType.GREATER -> {
-                checkNumberOperands(expr.operator, left, right)
-                (left as Double) > (right as Double)
-            }
-            TokenType.GREATER_EQUAL -> {
-                checkNumberOperands(expr.operator, left, right)
-                (left as Double) >= (right as Double)
-            }
-            TokenType.LESS -> {
-                checkNumberOperands(expr.operator, left, right)
-                (left as Double) < (right as Double)
-            }
-            TokenType.LESS_EQUAL -> {
-                checkNumberOperands(expr.operator, left, right)
-                (left as Double) <= (right as Double)
-            }
+            TokenType.GREATER -> (left asDouble expr.operator) > (right asDouble expr.operator)
+            TokenType.GREATER_EQUAL -> (left asDouble expr.operator) >= (right asDouble expr.operator)
+            TokenType.LESS -> (left asDouble expr.operator) < (right asDouble expr.operator)
+            TokenType.LESS_EQUAL -> (left asDouble expr.operator) <= (right asDouble expr.operator)
             TokenType.BANG_EQUAL -> left != right
             TokenType.EQUAL_EQUAL -> left == right
-
             else -> null
         }
     }
@@ -64,7 +40,7 @@ class Interpreter: Expr.Visitor<Any?> {
         val right = evaluate(expr.right)
         return when (expr.operator.type) {
             TokenType.BANG -> !isTruthy(right)
-            TokenType.MINUS -> -(right as Double)
+            TokenType.MINUS -> -(right asDouble expr.operator)
             else -> null
         }
     }
@@ -78,28 +54,19 @@ class Interpreter: Expr.Visitor<Any?> {
 
     private fun evaluate(expr: Expr): Any? = expr.accept(this)
 
-    private fun stringify(value: Any?): String {
-        return when (value) {
+    private fun stringify(value: Any?) =
+        when (value) {
             null -> "nil"
-            is Double -> {
-                var text = value.toString()
-                if (text.endsWith(".0")) {
-                    text = text.dropLast(2)
-                }
-                text
-            }
+            is Double -> value.toString().removeSuffix(".0")
             else -> value.toString()
         }
-    }
 
-    private fun checkNumberOperand(operator: Token, operand: Any?) {
-        require(operand is Double) {
-            throw RunTimeError(operator, "Operand must be a number.")
-        }
-    }
+    private fun checkNumberOperand(operator: Token, operand: Any?) =
+        require(operand is Double) { throw RunTimeError(operator, "Operand must be a number.") }
 
-    private fun checkNumberOperands(operator: Token, vararg operands: Any?) {
-        if (operands.all { it is Double }) return
-        throw RunTimeError(operator, "Operands must be numbers.")
-    }
+    private fun checkNumberOperands(operator: Token, vararg operands: Any?) =
+        require(operands.all { it is Double }) { throw RunTimeError(operator, "Operands must be numbers.") }
+
+    private infix fun Any?.asDouble(operator: Token): Double = this as? Double
+        ?: throw RunTimeError(operator, "Operand must be a number.")
 }

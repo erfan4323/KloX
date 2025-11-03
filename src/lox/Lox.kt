@@ -3,9 +3,6 @@
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
-import java.nio.charset.Charset
-import kotlin.io.path.Path
-import kotlin.io.path.pathString
 import kotlin.system.exitProcess
 
 class Lox() {
@@ -27,7 +24,7 @@ class Lox() {
     }
 
     private fun runPrompt() {
-        val reader = BufferedReader(InputStreamReader(System.`in`))
+        val reader = BufferedReader(InputStreamReader(System.`in`)).buffered()
         while (true) {
             print("> ")
             System.out.flush()
@@ -38,11 +35,9 @@ class Lox() {
     }
 
     private fun runFile(path: String) {
-        val source = File(Path(path).pathString).readText(Charset.defaultCharset())
-        run(source)
-
+        run(File(path).readText())
         if (hadError) exitProcess(65)
-        if (hadRuntimeError) exitProcess(70);
+        if (hadRuntimeError) exitProcess(70)
     }
 
     private fun run(source: String) {
@@ -60,21 +55,16 @@ class Lox() {
         private var hadError = false
         private var hadRuntimeError = false
 
-        fun error(line: Int, message: String) {
-            report(line, "", message)
-        }
+        fun error(line: Int, message: String) = report(line, "", message)
 
-        fun error(token: Token, message: String) {
-            if (token.type == TokenType.EOF) {
-                report(token.line, " at end", message)
-            }
-            else {
-                report(token.line, " at '${token.lexeme}'", message)
-            }
-        }
+        fun error(token: Token, message: String) = report(
+            token.line,
+            if (token.type == TokenType.EOF) " at end" else " at '${token.lexeme}'",
+            message
+        )
 
-        private fun report(line: Int, where:String, message: String) {
-            eprintln("[Line $line] Error $where: $message")
+        private fun report(line: Int, where: String, message: String) {
+            eprintln("[Line $line] Error$where: $message")
             hadError = true
         }
 
@@ -83,6 +73,6 @@ class Lox() {
             hadRuntimeError = true
         }
 
-        fun eprintln(message: Any?) = System.err.println(message)
+        private fun eprintln(message: Any?) = System.err.println(message)
     }
 }
