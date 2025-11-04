@@ -26,6 +26,8 @@ class Scanner(val source: String) {
     )
 
     fun scanTokens(): MutableList<Token> {
+        if (!isAtEnd() && source[current] == '\uFEFF') advance()
+
         while (!isAtEnd()) {
             start = current
             scanToken()
@@ -67,7 +69,7 @@ class Scanner(val source: String) {
             else -> when {
                 c.isDigit() -> number()
                 c.isAlpha() -> identifier()
-                else -> Lox.error(line, "Unexpected character.")
+                else -> Lox.error(line, "Unexpected character $c.")
             }
         }
     }

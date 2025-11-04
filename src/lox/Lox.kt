@@ -35,7 +35,9 @@ class Lox() {
     }
 
     private fun runFile(path: String) {
-        run(File(path).readText())
+        val source = File(path).readText(Charsets.UTF_8).trimStart('\uFEFF')
+        run(source)
+
         if (hadError) exitProcess(65)
         if (hadRuntimeError) exitProcess(70)
     }
