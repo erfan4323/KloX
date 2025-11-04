@@ -1,13 +1,21 @@
 ﻿package lox
 
-class Interpreter: Expr.Visitor<Any?> {
-    fun interpret(expression: Expr) {
+class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
+    fun interpret(statements: List<Stmt>) {
         try {
-            evaluate(expression)?.let { println(stringify(it)) }
+            for (statement in statements) {
+                execute(statement)
+            }
         } catch (error: RunTimeError) {
             Lox.runtimeError(error)
         }
     }
+
+    override fun visitExpressionStmt(stmt: Stmt.Expression) {
+        evaluate(stmt.expression)
+    }
+
+    override fun visitPrintStmt(stmt: Stmt.Print) = println(stringify(evaluate(stmt.expression)))
 
     override fun visitBinaryExpr(expr: Expr.Binary): Any? {
         val left = evaluate(expr.left)
@@ -51,6 +59,8 @@ class Interpreter: Expr.Visitor<Any?> {
             is Boolean -> obj
             else -> true
         }
+
+    private fun execute(statement: Stmt) = statement.accept(this)
 
     private fun evaluate(expr: Expr): Any? = expr.accept(this)
 

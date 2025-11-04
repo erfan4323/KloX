@@ -44,11 +44,11 @@ class Lox() {
         val scanner = Scanner(source)
         val tokens = scanner.scanTokens()
         val parser = Parser(tokens)
-        val expression: Expr? = parser.parse()
+        val statements = parser.parse()
 
         if (hadError) return
 
-        expression?.let { interpreter.interpret(it) }
+        interpreter.interpret(statements)
     }
 
     companion object {
