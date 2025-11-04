@@ -1,12 +1,13 @@
 ﻿package lox
 
-class AstPrinter: Expr.Visitor<String> {
-    fun print(expr: Expr): String {
-        return expr.accept(this)
-    }
+class AstPrinter: Expr.Visitor<String>, Stmt.Visitor<String> {
+    fun print(expr: Expr): String = expr.accept(this)
+
+    fun print(statements: List<Stmt>): String =
+        statements.joinToString("\n") { it.accept(this) }
 
     override fun visitAssignExpr(expr: Expr.Assign): String {
-        TODO("Not yet implemented")
+        return parenthesize("=", Expr.Variable(expr.name), expr.value)
     }
 
     override fun visitBinaryExpr(expr: Expr.Binary): String {
@@ -26,7 +27,30 @@ class AstPrinter: Expr.Visitor<String> {
     }
 
     override fun visitVariableExpr(expr: Expr.Variable): String {
-        TODO("Not yet implemented")
+        return expr.name.lexeme
+    }
+
+    override fun visitBlockStmt(stmt: Stmt.Block): String {
+        return buildString {
+            append("{ ")
+            for (s in stmt.statements) {
+                append(s.accept(this@AstPrinter))
+                append(" ")
+            }
+            append("}")
+        }
+    }
+
+    override fun visitExpressionStmt(stmt: Stmt.Expression): String {
+        return stmt.expression.accept(this)
+    }
+
+    override fun visitPrintStmt(stmt: Stmt.Print): String {
+        return parenthesize("print", stmt.expression)
+    }
+
+    override fun visitVarStmt(stmt: Stmt.Var): String {
+        return parenthesize("var ${stmt.name.lexeme}", stmt.initializer)
     }
 
     private fun parenthesize(name: String, vararg exprs: Expr): String {

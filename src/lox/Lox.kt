@@ -51,6 +51,8 @@ class Lox() {
         if (hadError) return
 
         interpreter.interpret(statements)
+        val printer = AstPrinter()
+        println(printer.print(statements))
     }
 
     companion object {
