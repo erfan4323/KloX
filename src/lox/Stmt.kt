@@ -2,9 +2,17 @@ package lox
 
 sealed class Stmt {
     interface Visitor<R> {
+        fun visitBlockStmt(stmt: Block): R
         fun visitExpressionStmt(stmt: Expression): R
         fun visitPrintStmt(stmt: Print): R
         fun visitVarStmt(stmt: Var): R
+    }
+
+    data class Block(
+        val statements: List<Stmt>
+    ) : Stmt() {
+        override fun <R> accept(visitor: Visitor<R>): R =
+            visitor.visitBlockStmt(this)
     }
 
     data class Expression(

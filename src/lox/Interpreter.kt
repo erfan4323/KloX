@@ -1,7 +1,7 @@
 ﻿package lox
 
 class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
-    private val environment = Environment()
+    private var environment = Environment()
 
     fun interpret(statements: List<Stmt>) {
         try {
@@ -10,6 +10,24 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
             }
         } catch (error: RunTimeError) {
             Lox.runtimeError(error)
+        }
+    }
+
+    override fun visitBlockStmt(stmt: Stmt.Block) {
+        executeBlock(stmt.statements, Environment(environment))
+    }
+
+    private fun executeBlock(statements: List<Stmt>, environment: Environment) {
+        val previous = this.environment
+        try {
+            this.environment = environment
+
+            for (statement in statements) {
+                execute(statement)
+            }
+        }
+        finally {
+            this.environment = previous
         }
     }
 
@@ -22,6 +40,12 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     override fun visitVarStmt(stmt: Stmt.Var) {
         val value: Any? = evaluate(stmt.initializer)
         environment.define(stmt.name.lexeme, value)
+    }
+
+    override fun visitAssignExpr(expr: Expr.Assign): Any? {
+        val value = evaluate(expr.value)
+        environment.assign(expr.name, value)
+        return value
     }
 
     override fun visitBinaryExpr(expr: Expr.Binary): Any? {

@@ -5,6 +5,10 @@ class AstPrinter: Expr.Visitor<String> {
         return expr.accept(this)
     }
 
+    override fun visitAssignExpr(expr: Expr.Assign): String {
+        TODO("Not yet implemented")
+    }
+
     override fun visitBinaryExpr(expr: Expr.Binary): String {
         return parenthesize(expr.operator.lexeme, expr.left, expr.right)
     }
