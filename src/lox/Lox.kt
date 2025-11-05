@@ -51,7 +51,7 @@ class Lox() {
         if (hadError) return
 
         interpreter.interpret(statements)
-        println(AstFormatter().format(statements))
+//        println(AstFormatter().format(statements))
     }
 
     companion object {

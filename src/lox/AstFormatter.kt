@@ -19,6 +19,10 @@ class AstFormatter: Expr.Visitor<String>, Stmt.Visitor<String> {
     override fun visitLiteralExpr(expr: Expr.Literal): String =
         expr.value.toString()
 
+    override fun visitLogicalExpr(expr: Expr.Logical): String {
+        TODO("Not yet implemented")
+    }
+
     override fun visitUnaryExpr(expr: Expr.Unary): String =
         parenthesize(expr.operator.lexeme, expr.right)
 
@@ -36,11 +40,19 @@ class AstFormatter: Expr.Visitor<String>, Stmt.Visitor<String> {
     override fun visitExpressionStmt(stmt: Stmt.Expression): String =
         stmt.expression.accept(this)
 
+    override fun visitIfStmt(stmt: Stmt.If): String {
+        TODO("Not yet implemented")
+    }
+
     override fun visitPrintStmt(stmt: Stmt.Print): String =
         parenthesize("print", stmt.expression)
 
     override fun visitVarStmt(stmt: Stmt.Var): String =
         parenthesize("var ${stmt.name.lexeme}", stmt.initializer)
+
+    override fun visitWhileStmt(stmt: Stmt.While): String {
+        TODO("Not yet implemented")
+    }
 
     // ===== Helpers =====
     private fun parenthesize(name: String, vararg exprs: Expr): String =
