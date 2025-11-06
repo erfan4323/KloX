@@ -1,7 +1,18 @@
 ﻿package lox
 
 class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
-    private var environment = Environment()
+    val globals = Environment()
+    private var environment: Environment = globals
+
+    init {
+        globals.define("clock", object: LoxCallable {
+            override fun arity(): Int = 0
+            override fun call(interpreter: Interpreter, arguments: MutableList<Any?>): Any? {
+                return System.currentTimeMillis() / 1000.0
+            }
+            override fun toString(): String = "<native fn>"
+        })
+    }
 
     fun interpret(statements: List<Stmt>) {
         try {
@@ -17,7 +28,7 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         executeBlock(stmt.statements, Environment(environment))
     }
 
-    private fun executeBlock(statements: List<Stmt>, environment: Environment) {
+    fun executeBlock(statements: List<Stmt>, environment: Environment) {
         val previous = this.environment
         try {
             this.environment = environment
@@ -33,6 +44,11 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
 
     override fun visitExpressionStmt(stmt: Stmt.Expression) {
         evaluate(stmt.expression)
+    }
+
+    override fun visitFunctionStmt(stmt: Stmt.Function) {
+        val function = LoxFunction(stmt)
+        environment.define(stmt.name.lexeme, function)
     }
 
     override fun visitIfStmt(stmt: Stmt.If) {
@@ -84,6 +100,29 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
             TokenType.EQUAL_EQUAL -> left == right
             else -> null
         }
+    }
+
+    override fun visitCallExpr(expr: Expr.Call): Any? {
+        val callee = evaluate(expr.callee)
+        val arguments = mutableListOf<Any?>()
+
+        for (arg in expr.arguments) {
+            arguments += evaluate(arg)
+        }
+
+        if (callee !is LoxCallable) {
+            throw RunTimeError(expr.paren,  "Can only call functions and classes.")
+        }
+
+        val function: LoxCallable = callee
+
+        if (arguments.size != function.arity()) {
+            throw RunTimeError(
+                expr.paren,
+                "Expected ${function.arity()} arguments but got ${arguments.size}.")
+        }
+
+        return function.call(this, arguments)
     }
 
     override fun visitGroupingExpr(expr: Expr.Grouping): Any? = evaluate(expr.expression)

@@ -13,6 +13,10 @@ class AstFormatter: Expr.Visitor<String>, Stmt.Visitor<String> {
     override fun visitBinaryExpr(expr: Expr.Binary): String =
         parenthesize(expr.operator.lexeme, expr.left, expr.right)
 
+    override fun visitCallExpr(expr: Expr.Call): String {
+        TODO("Not yet implemented")
+    }
+
     override fun visitGroupingExpr(expr: Expr.Grouping): String =
         parenthesize("group", expr.expression)
 
@@ -39,6 +43,10 @@ class AstFormatter: Expr.Visitor<String>, Stmt.Visitor<String> {
 
     override fun visitExpressionStmt(stmt: Stmt.Expression): String =
         stmt.expression.accept(this)
+
+    override fun visitFunctionStmt(stmt: Stmt.Function): String {
+        TODO("Not yet implemented")
+    }
 
     override fun visitIfStmt(stmt: Stmt.If): String {
         TODO("Not yet implemented")
