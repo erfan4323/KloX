@@ -3,6 +3,7 @@
 class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     val globals = Environment()
     private var environment: Environment = globals
+    private val locals = HashMap<Expr, Int>()
 
     init {
         globals.define("clock", object: LoxCallable {
@@ -22,6 +23,10 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         } catch (error: RunTimeError) {
             Lox.runtimeError(error)
         }
+    }
+
+    fun resolve(expr: Expr, depth: Int) {
+        locals[expr] = depth
     }
 
     override fun visitBlockStmt(stmt: Stmt.Block) {
@@ -80,7 +85,14 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
 
     override fun visitAssignExpr(expr: Expr.Assign): Any? {
         val value = evaluate(expr.value)
-        environment.assign(expr.name, value)
+        val distance = locals[expr]
+        if (distance != null) {
+            environment.assignAt(distance, expr.name, value)
+        }
+        else
+        {
+            environment.assign(expr.name, value)
+        }
         return value
     }
 
@@ -153,7 +165,19 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         }
     }
 
-    override fun visitVariableExpr(expr: Expr.Variable): Any? = environment.get(expr.name)
+    override fun visitVariableExpr(expr: Expr.Variable): Any? {
+        return lookupVariable(expr.name, expr)
+    }
+
+    private fun lookupVariable(name: Token, expr: Expr): Any? {
+        val distance = locals[expr]
+        if (distance != null) {
+            return environment.getAt(distance, name.lexeme)
+        }
+        else {
+            return environment.get(name)
+        }
+    }
 
     private fun isTruthy(obj: Any?): Boolean =
         when (obj) {
