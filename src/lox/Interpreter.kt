@@ -62,6 +62,11 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
 
     override fun visitPrintStmt(stmt: Stmt.Print) = println(stringify(evaluate(stmt.expression)))
 
+    override fun visitReturnStmt(stmt: Stmt.Return) {
+        val value: Any? = stmt.value?.let { evaluate(it) }
+        throw Return(value)
+    }
+
     override fun visitVarStmt(stmt: Stmt.Var) {
         val value: Any? = evaluate(stmt.initializer)
         environment.define(stmt.name.lexeme, value)

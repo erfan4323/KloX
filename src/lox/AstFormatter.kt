@@ -55,6 +55,10 @@ class AstFormatter: Expr.Visitor<String>, Stmt.Visitor<String> {
     override fun visitPrintStmt(stmt: Stmt.Print): String =
         parenthesize("print", stmt.expression)
 
+    override fun visitReturnStmt(stmt: Stmt.Return): String {
+        TODO("Not yet implemented")
+    }
+
     override fun visitVarStmt(stmt: Stmt.Var): String =
         parenthesize("var ${stmt.name.lexeme}", stmt.initializer)
 
