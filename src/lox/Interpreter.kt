@@ -17,9 +17,7 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
 
     fun interpret(statements: List<Stmt>) {
         try {
-            for (statement in statements) {
-                execute(statement)
-            }
+            statements.forEach(::execute)
         } catch (error: RunTimeError) {
             Lox.runtimeError(error)
         }
@@ -33,14 +31,18 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         executeBlock(stmt.statements, Environment(environment))
     }
 
+    override fun visitClassStmt(stmt: Stmt.Class) {
+        environment.define(stmt.name.lexeme, null)
+        val klass: LoxClass = LoxClass(stmt.name.lexeme)
+        environment.assign(stmt.name, klass)
+    }
+
     fun executeBlock(statements: List<Stmt>, environment: Environment) {
         val previous = this.environment
         try {
             this.environment = environment
 
-            for (statement in statements) {
-                execute(statement)
-            }
+            statements.forEach(::execute)
         }
         finally {
             this.environment = previous

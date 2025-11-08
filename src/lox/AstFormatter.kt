@@ -41,6 +41,10 @@ class AstFormatter: Expr.Visitor<String>, Stmt.Visitor<String> {
             append("}")
         }
 
+    override fun visitClassStmt(stmt: Stmt.Class): String {
+        TODO("Not yet implemented")
+    }
+
     override fun visitExpressionStmt(stmt: Stmt.Expression): String =
         stmt.expression.accept(this)
 

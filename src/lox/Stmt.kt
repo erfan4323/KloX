@@ -3,6 +3,7 @@ package lox
 sealed class Stmt {
     interface Visitor<R> {
         fun visitBlockStmt(stmt: Block): R
+        fun visitClassStmt(stmt: Class): R
         fun visitExpressionStmt(stmt: Expression): R
         fun visitFunctionStmt(stmt: Function): R
         fun visitIfStmt(stmt: If): R
@@ -17,6 +18,14 @@ sealed class Stmt {
     ) : Stmt() {
         override fun <R> accept(visitor: Visitor<R>): R =
             visitor.visitBlockStmt(this)
+    }
+
+    data class Class(
+        val name: Token,
+        val methods: List<Stmt.Function>
+    ) : Stmt() {
+        override fun <R> accept(visitor: Visitor<R>): R =
+            visitor.visitClassStmt(this)
     }
 
     data class Expression(
