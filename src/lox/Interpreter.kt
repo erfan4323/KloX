@@ -1,5 +1,7 @@
 ﻿package lox
 
+import kotlin.math.exp
+
 class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     val globals = Environment()
     private var environment: Environment = globals
@@ -33,7 +35,14 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
 
     override fun visitClassStmt(stmt: Stmt.Class) {
         environment.define(stmt.name.lexeme, null)
-        val klass: LoxClass = LoxClass(stmt.name.lexeme)
+
+        val methods = mutableMapOf<String, LoxFunction>()
+        for (method in  stmt.methods) {
+            val function = LoxFunction(method,environment)
+            methods[method.name.lexeme] = function
+        }
+
+        val klass = LoxClass(stmt.name.lexeme, methods)
         environment.assign(stmt.name, klass)
     }
 
@@ -144,6 +153,15 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         return function.call(this, arguments)
     }
 
+    override fun visitGetExpr(expr: Expr.Get): Any? {
+        val obj = evaluate(expr.obj)
+        return if (obj is LoxInstance) {
+            obj.get(expr.name)
+        } else {
+            throw RunTimeError(expr.name, "Only instances have properties.")
+        }
+    }
+
     override fun visitGroupingExpr(expr: Expr.Grouping): Any? = evaluate(expr.expression)
 
     override fun visitLiteralExpr(expr: Expr.Literal): Any? = expr.value
@@ -157,6 +175,21 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
 
         return evaluate(expr.right)
     }
+
+    override fun visitSetExpr(expr: Expr.Set): Any? {
+        val obj = evaluate(expr.obj)
+            ?: throw RunTimeError(expr.name, "Only instances have fields.")
+
+        if (obj !is LoxInstance)
+            throw RunTimeError(expr.name, "Only instances have fields.")
+
+        val value = evaluate(expr.value)
+        obj.set(expr.name, value)
+
+        return value
+    }
+
+    override fun visitThisExpr(expr: Expr.This): Any? = lookupVariable(expr.keyword, expr)
 
     override fun visitUnaryExpr(expr: Expr.Unary): Any? {
         val right = evaluate(expr.right)

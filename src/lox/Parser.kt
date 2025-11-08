@@ -174,19 +174,19 @@ class Parser(val tokens: List<Token>) {
     private fun assignment(): Expr {
         val expr = or()
 
-        if (match(TokenType.EQUAL)) {
-            val equals = previous()
-            val value = assignment()
+        if (!match(TokenType.EQUAL)) return expr
 
-            if (expr is Expr.Variable) {
-                val name = expr.name
-                return Expr.Assign(name, value)
+        val equals = previous()
+        val value = assignment()
+
+        return when (expr) {
+            is Expr.Variable -> Expr.Assign(expr.name, value)
+            is Expr.Get -> Expr.Set(expr.obj, expr.name, value)
+            else -> {
+                error(equals, "Invalid assignment target.")
+                expr // unreachable, but keeps compiler happy
             }
-
-            error(equals, "Invalid assignment target.")
         }
-
-        return expr
     }
 
     private fun or(): Expr {
@@ -274,8 +274,15 @@ class Parser(val tokens: List<Token>) {
     private fun call(): Expr {
         var expr = primary()
 
-        while (match(TokenType.LEFT_PAREN)) {
-            expr = finishCall(expr)
+        while (true) {
+            expr = when {
+                match(TokenType.LEFT_PAREN) -> finishCall(expr)
+                match(TokenType.DOT) -> {
+                    val name = consume(TokenType.IDENTIFIER, "Expect property name after '.'.")
+                    Expr.Get(expr, name)
+                }
+                else -> break
+            }
         }
 
         return expr
@@ -312,6 +319,8 @@ class Parser(val tokens: List<Token>) {
                 consume(TokenType.RIGHT_PAREN, "Expect ')' after expression.")
                 Expr.Grouping(expr)
             }
+
+            match(TokenType.THIS) -> Expr.This(previous())
 
             match(TokenType.IDENTIFIER) -> Expr.Variable(previous())
 

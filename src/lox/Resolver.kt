@@ -5,6 +5,7 @@ import java.util.*
 class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<Unit> {
     private val scopes = Stack<MutableMap<String, Boolean>>()
     private var currentFunction = FunctionType.NONE
+    private var currentClass = ClassType.NONE
 
     fun resolve(statements: List<Stmt>) = statements.forEach { resolve(it) }
 
@@ -29,6 +30,10 @@ class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<U
         }
     }
 
+    override fun visitGetExpr(expr: Expr.Get) {
+        resolve(expr.obj)
+    }
+
     override fun visitGroupingExpr(expr: Expr.Grouping) {
         resolve(expr.expression)
     }
@@ -40,6 +45,19 @@ class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<U
     override fun visitLogicalExpr(expr: Expr.Logical) {
         resolve(expr.left)
         resolve(expr.right)
+    }
+
+    override fun visitSetExpr(expr: Expr.Set) {
+        resolve(expr.value)
+        resolve(expr.obj)
+    }
+
+    override fun visitThisExpr(expr: Expr.This) {
+        if (currentClass == ClassType.NONE) {
+            Lox.error(expr.keyword, "Can't use 'this' outside of a class.");
+        }
+
+        resolveLocal(expr, expr.keyword)
     }
 
     override fun visitUnaryExpr(expr: Expr.Unary) {
@@ -60,8 +78,22 @@ class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<U
     }
 
     override fun visitClassStmt(stmt: Stmt.Class) {
+        val enclosingClass = currentClass
+        currentClass = ClassType.CLASS
+
         declare(stmt.name)
         define(stmt.name)
+
+        beginScope()
+        scopes.peek()["this"] = true
+
+        for (method in stmt.methods) {
+            resolveFunction(method, FunctionType.METHOD)
+        }
+
+        endScope()
+
+        currentClass = enclosingClass
     }
 
     override fun visitExpressionStmt(stmt: Stmt.Expression) {
@@ -149,5 +181,11 @@ class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<U
 
 private enum class FunctionType {
     NONE,
-    FUNCTION
+    FUNCTION,
+    METHOD,
+}
+
+private enum class ClassType {
+    NONE,
+    CLASS,
 }
