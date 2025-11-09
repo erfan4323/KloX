@@ -1,6 +1,6 @@
 ﻿package lox
 
-class LoxFunction(val declaration: Stmt.Function, val closure: Environment): LoxCallable {
+class LoxFunction(val declaration: Stmt.Function, val closure: Environment, val isInitializer: Boolean): LoxCallable {
     override fun arity(): Int = declaration.params.size
 
     override fun call(
@@ -19,16 +19,19 @@ class LoxFunction(val declaration: Stmt.Function, val closure: Environment): Lox
             interpreter.executeBlock(declaration.body, environment)
         }
         catch (returnValue: Return) {
+            if (isInitializer) return closure.getAt(0, "this")
             return returnValue.value
         }
+
+        if (isInitializer) return closure.getAt(0, "this")
 
         return null
     }
 
-    fun bind(instance: LoxInstance): Any {
+    fun bind(instance: LoxInstance): LoxFunction {
         val environment = Environment(closure)
         environment.define("this", instance)
-        return LoxFunction(declaration, environment)
+        return LoxFunction(declaration, environment, isInitializer)
     }
 
     override fun toString(): String = "<fn ${declaration.name.lexeme}>"

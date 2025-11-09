@@ -88,7 +88,13 @@ class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<U
         scopes.peek()["this"] = true
 
         for (method in stmt.methods) {
-            resolveFunction(method, FunctionType.METHOD)
+            val declaration =
+                if (method.name.lexeme == "init")
+                    FunctionType.INITIALIZER
+                else
+                    FunctionType.METHOD
+
+            resolveFunction(method, declaration)
         }
 
         endScope()
@@ -121,7 +127,12 @@ class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<U
             Lox.error(stmt.keyword, "Can't return from top-level code.")
         }
 
-        stmt.value?.let { resolve(it) }
+        stmt.value?.let {
+            if (currentFunction == FunctionType.INITIALIZER) {
+                Lox.error(stmt.keyword, "Can't return a value from an initializer.")
+            }
+            resolve(it)
+        }
     }
 
     override fun visitVarStmt(stmt: Stmt.Var) {
@@ -182,6 +193,7 @@ class Resolver(val interpreter: Interpreter): Expr.Visitor<Unit>, Stmt.Visitor<U
 private enum class FunctionType {
     NONE,
     FUNCTION,
+    INITIALIZER,
     METHOD,
 }
 
