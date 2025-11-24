@@ -34,31 +34,25 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     }
 
     override fun visitClassStmt(stmt: Stmt.Class) {
-        var superclass: Any? = null
-        if (stmt.superclass != null) {
-            superclass = evaluate(stmt.superclass)
-            if (superclass !is LoxClass) {
-                throw RunTimeError(stmt.superclass.name, "Superclass must be a class.")
-            }
+        val superclass = stmt.superclass?.let { 
+            evaluate(it) as? LoxClass ?: throw RunTimeError(it.name, "Superclass must be a class.")
         }
 
         environment.define(stmt.name.lexeme, null)
 
-        if (stmt.superclass != null) {
-            environment = Environment(environment)
-            environment.define("super", superclass)
+        val previousEnv = environment
+        if (superclass != null) {
+            environment = Environment(previousEnv).apply { define("super", superclass) }
         }
 
-        val methods = mutableMapOf<String, LoxFunction>()
-        for (method in  stmt.methods) {
-            val function = LoxFunction(method,environment, method.name.lexeme == "init")
-            methods[method.name.lexeme] = function
-        }
+        val methods = stmt.methods.associate { method ->
+            method.name.lexeme to LoxFunction(method, environment, method.name.lexeme == "init")
+        }.toMutableMap()
 
-        val klass = LoxClass(stmt.name.lexeme, superclass as LoxClass?, methods)
+        val klass = LoxClass(stmt.name.lexeme, superclass, methods)
 
         if (superclass != null) {
-            environment = environment.enclosing!!
+            environment = previousEnv
         }
 
         environment.assign(stmt.name, klass)
@@ -211,10 +205,8 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         val distance: Int = locals[expr]!!
         val superclass = environment.getAt(distance, "super") as LoxClass
         val obj = environment.getAt(distance - 1, "this") as LoxInstance
-        val method = superclass.findMethod(expr.method.lexeme) ?: throw RunTimeError(
-            expr.method,
-            "Undefined property '${expr.method.lexeme}'."
-        )
+        val method = superclass.findMethod(expr.method.lexeme) 
+            ?: throw RunTimeError(expr.method, "Undefined property '${expr.method.lexeme}'.")
         return method.bind(obj)
     }
 
