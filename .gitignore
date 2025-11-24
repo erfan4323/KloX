@@ -58,3 +58,6 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+# MakeFile
+MakeFile

@@ -1,6 +1,6 @@
 ﻿package lox
 
-class Environment(private val enclosing: Environment? = null) {
+class Environment(val enclosing: Environment? = null) {
     private var values = mutableMapOf<String, Any?>()
 
     fun define(name: String, value: Any?) {
