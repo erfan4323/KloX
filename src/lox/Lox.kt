@@ -9,40 +9,135 @@ class Lox() {
     private val interpreter = Interpreter()
 
     fun runMain(args: Array<String>) {
-        when {
-            args.size > 1 -> {
-                println("Usage: KloX [script]")
-                exitProcess(64)
+        when (val command = Cli.parseArgs(args)) {
+            is Command.Run -> {
+                runFile(command.file, command.printAst)
             }
-            args.size == 1 -> {
-                runFile(args[0])
+            is Command.Repl -> {
+                runPrompt(Command.Repl.printAst)
             }
-            else -> {
-                runPrompt()
-            }
+            is Command.Compile -> compile(command.file, command.target)
         }
     }
 
-    private fun runPrompt() {
-        val reader = BufferedReader(InputStreamReader(System.`in`)).buffered()
-        while (true) {
-            print("> ")
-            System.out.flush()
-            val line = reader.readLine() ?: break
-            run(line)
-            hadError = false
-        }
-    }
-
-    private fun runFile(path: String) {
+    private fun compile(path: String, target: Target) {
         val source = File(path).readText(Charsets.UTF_8).trimStart('\uFEFF')
-        run(source)
+
+        val scanner = Scanner(source)
+        val tokens = scanner.scanTokens()
+        val parser = Parser(tokens)
+        val statements = parser.parse()
+
+        if (hadError) exitProcess(65)
+
+        val resolver = Resolver(interpreter)
+        resolver.resolve(statements)
+
+        if (hadError) exitProcess(65)
+
+        // Placeholder for actual compilation logic
+        println("Compiled '$path' to $target (compilation not yet implemented)")
+        // In the future, you can emit bytecode, JVM class files, etc. here
+    }
+
+    private fun runPrompt(printAst: Boolean) {
+        val reader = BufferedReader(InputStreamReader(System.`in`))
+
+        println(Ansi.bold("Welcome to KloX REPL (Kotlin Lox)"))
+        println("Type ${Ansi.cyan(":help")} for commands, or start typing Lox code.")
+        println("Press Ctrl+D or type ${Ansi.cyan(":quit")} to exit.\n")
+
+        val history = mutableListOf<Pair<String, Boolean>>()
+        var pendingPrompt = true
+
+        while (true) {
+            if (pendingPrompt) {
+                print(Ansi.prompt)
+                System.out.flush()
+            }
+
+            val line = reader.readLine() ?: break
+
+            pendingPrompt = true
+
+            when {
+                line.isBlank() -> {}
+
+                line.startsWith(":") -> {
+                    handleReplCommand(line.trim(), history)
+                }
+
+                else -> {
+
+                    hadError = false
+                    hadRuntimeError = false
+
+                    run(line, printAst)
+
+                    if (hadError || hadRuntimeError) {
+                        pendingPrompt = false
+                        history.add(line to false)
+                    }
+                    else {
+                        history.add(line to true)
+                    }
+                }
+            }
+
+            hadError = false
+            hadRuntimeError = false
+        }
+    }
+
+    private fun handleReplCommand(command: String, history: MutableList<Pair<String, Boolean>>) {
+        when (command) {
+            ":help", ":h" -> {
+                println(
+                    """
+                ${Ansi.bold("KloX REPL Commands:")}
+                  :help, :h        Show this help
+                  :quit, :q        Exit the REPL
+                  :clear, :c       Clear the screen
+                  :history         Show command history
+                """.trimIndent()
+                )
+            }
+
+            ":quit", ":q" -> {
+                println(Ansi.yellow("Goodbye!"))
+                exitProcess(0)
+            }
+
+            ":clear", ":c" -> {
+                print(Ansi.clearScreen)
+                System.out.flush()
+            }
+
+            ":history" -> {
+                history.forEachIndexed { i, (cmd, flag) ->
+                    if (flag) {
+                        println("${i + 1}: $cmd")
+                    } else {
+                        println("${Ansi.strike("${i + 1}: $cmd")} (not executed)")
+                    }
+                }
+            }
+
+            else -> {
+                println(Ansi.red("Unknown command: $command. Type :help for help."))
+            }
+        }
+    }
+
+    private fun runFile(path: String, printAst: Boolean) {
+        val source = File(path).readText(Charsets.UTF_8).trimStart('\uFEFF')
+        run(source, printAst)
 
         if (hadError) exitProcess(65)
         if (hadRuntimeError) exitProcess(70)
     }
 
-    private fun run(source: String) {
+    private fun run(source: String, printAst: Boolean) {
         val scanner = Scanner(source)
         val tokens = scanner.scanTokens()
         val parser = Parser(tokens)
@@ -56,7 +151,13 @@ class Lox() {
         if (hadError) return
 
         interpreter.interpret(statements)
-//        println(AstFormatter().format(statements))
+        println(printAst)
+        if (printAst)
+        {
+            println("----------------|Ast|----------------")
+            println(AstFormatter().print(statements))
+            println("-------------------------------------")
+        }
     }
 
     companion object {

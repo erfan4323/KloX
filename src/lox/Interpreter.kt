@@ -1,7 +1,5 @@
 ﻿package lox
 
-import kotlin.math.exp
-
 class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     val globals = Environment()
     private var environment: Environment = globals
@@ -88,7 +86,9 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         }
     }
 
-    override fun visitPrintStmt(stmt: Stmt.Print) = println(stringify(evaluate(stmt.expression)))
+    override fun visitPrintStmt(stmt: Stmt.Print) {
+        println(stringify(evaluate(stmt.expression)))
+    }
 
     override fun visitReturnStmt(stmt: Stmt.Return) {
         val value: Any? = stmt.value?.let { evaluate(it) }
@@ -253,11 +253,13 @@ class Interpreter: Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
             else -> value.toString()
         }
 
-    private fun checkNumberOperand(operator: Token, operand: Any?) =
+    private fun checkNumberOperand(operator: Token, operand: Any?) {
         require(operand is Double) { throw RunTimeError(operator, "Operand must be a number.") }
+    }
 
-    private fun checkNumberOperands(operator: Token, vararg operands: Any?) =
+    private fun checkNumberOperands(operator: Token, vararg operands: Any?) {
         require(operands.all { it is Double }) { throw RunTimeError(operator, "Operands must be numbers.") }
+    }
 
     private infix fun Any?.asDouble(operator: Token): Double = this as? Double
         ?: throw RunTimeError(operator, "Operand must be a number.")

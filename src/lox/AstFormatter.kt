@@ -1,97 +1,149 @@
 ﻿package lox
 
-class AstFormatter: Expr.Visitor<String>, Stmt.Visitor<String> {
-    fun format(expr: Expr): String = expr.accept(this)
+class AstFormatter : Expr.Visitor<String>, Stmt.Visitor<String> {
 
-    fun format(statements: List<Stmt>): String =
+    fun print(statements: List<Stmt>): String =
         statements.joinToString("\n") { it.accept(this) }
 
+    fun print(expr: Expr): String = expr.accept(this)
+
     // ===== Expr Visitors =====
+
     override fun visitAssignExpr(expr: Expr.Assign): String =
-        parenthesize("=", Expr.Variable(expr.name), expr.value)
+        node("Expr.Assign ${expr.name.lexeme}", expr.value)
 
     override fun visitBinaryExpr(expr: Expr.Binary): String =
-        parenthesize(expr.operator.lexeme, expr.left, expr.right)
+        node("Expr.Binary ${expr.operator.lexeme}", expr.left, expr.right)
 
-    override fun visitCallExpr(expr: Expr.Call): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitCallExpr(expr: Expr.Call): String =
+        node("Expr.Call", expr.callee, *expr.arguments.toTypedArray())
 
-    override fun visitGetExpr(expr: Expr.Get): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitGetExpr(expr: Expr.Get): String =
+        node("Expr.Get .${expr.name.lexeme}", expr.obj)
 
     override fun visitGroupingExpr(expr: Expr.Grouping): String =
-        parenthesize("group", expr.expression)
+        node("Expr.Grouping", expr.expression)
 
     override fun visitLiteralExpr(expr: Expr.Literal): String =
-        expr.value.toString()
+        leaf("Expr.Literal", expr.value?.toString() ?: "nil")
 
-    override fun visitLogicalExpr(expr: Expr.Logical): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitLogicalExpr(expr: Expr.Logical): String =
+        node("Expr.Logical ${expr.operator.lexeme}", expr.left, expr.right)
 
-    override fun visitSetExpr(expr: Expr.Set): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitSetExpr(expr: Expr.Set): String =
+        node("Expr.Set = ${expr.name.lexeme}", expr.obj, expr.value)
 
-    override fun visitSuperExpr(expr: Expr.Super): String {
-        TODO("Not yet implemented")    
-    }
+    override fun visitSuperExpr(expr: Expr.Super): String =
+        leaf("Expr.Super", expr.method.lexeme)
 
-
-    override fun visitThisExpr(expr: Expr.This): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitThisExpr(expr: Expr.This): String =
+        leaf("Expr.This")
 
     override fun visitUnaryExpr(expr: Expr.Unary): String =
-        parenthesize(expr.operator.lexeme, expr.right)
+        node("Expr.Unary ${expr.operator.lexeme}", expr.right)
 
     override fun visitVariableExpr(expr: Expr.Variable): String =
-        expr.name.lexeme
+        leaf("Expr.Variable", expr.name.lexeme)
 
     // ===== Stmt Visitors =====
-    override fun visitBlockStmt(stmt: Stmt.Block): String =
-        buildString {
-            append("{\n")
-            stmt.statements.forEach { append("  ").append(it.accept(this@AstFormatter)).append("\n") }
-            append("}")
-        }
 
-    override fun visitClassStmt(stmt: Stmt.Class): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitBlockStmt(stmt: Stmt.Block): String =
+        node("Stmt.Block", *stmt.statements.toTypedArray())
+
+    override fun visitClassStmt(stmt: Stmt.Class): String =
+        node(
+            "Stmt.Class ${stmt.name.lexeme}" + (stmt.superclass?.let { " < ${it.name.lexeme}" } ?: ""),
+            *stmt.methods.toTypedArray()
+        )
 
     override fun visitExpressionStmt(stmt: Stmt.Expression): String =
-        stmt.expression.accept(this)
+        node("Stmt.Expression", stmt.expression)
 
-    override fun visitFunctionStmt(stmt: Stmt.Function): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitFunctionStmt(stmt: Stmt.Function): String =
+        buildString {
+            val name = stmt.name?.lexeme ?: "<anonymous>"
+            append("Stmt.Function \"$name\"")
 
-    override fun visitIfStmt(stmt: Stmt.If): String {
-        TODO("Not yet implemented")
-    }
+            // Always show parameters as separate lines (if any)
+            stmt.params.forEachIndexed { i, param ->
+                val isLastParam = i == stmt.params.lastIndex && stmt.body.isEmpty()
+                val prefix = if (isLastParam) "└─ " else "├─ "
+                append("\n   $prefix param: \"${param.lexeme}\"")
+            }
+
+            // Always show body, even if empty
+            val bodyPrefix = if (stmt.params.isEmpty()) "└─ " else "├─ "
+            val bodyContinue = if (stmt.params.isEmpty()) "   " else "│  "
+
+            append("\n $bodyPrefix body:")
+            if (stmt.body.isEmpty()) {
+                append(" (empty)")
+            } else {
+                stmt.body.forEachIndexed { i, bodyStmt ->
+                    append("\n")
+                    val isLast = i == stmt.body.lastIndex
+                    val prefix = if (isLast) "└─ " else "├─ "
+                    val continuePrefix = if (isLast) "   " else "│  "
+
+                    val lines = bodyStmt.accept(this@AstFormatter).lines()
+                    append("      $prefix${lines.first()}")
+                    lines.drop(1).forEach { line ->
+                        append("\n      $continuePrefix$line")
+                    }
+                }
+            }
+        }
+
+    override fun visitIfStmt(stmt: Stmt.If): String =
+        node("Stmt.If", stmt.condition, stmt.thenBranch, stmt.elseBranch)
 
     override fun visitPrintStmt(stmt: Stmt.Print): String =
-        parenthesize("print", stmt.expression)
+        node("Stmt.Print", stmt.expression)
 
-    override fun visitReturnStmt(stmt: Stmt.Return): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitReturnStmt(stmt: Stmt.Return): String =
+        if (stmt.value == null) leaf("Stmt.Return") else node("Stmt.Return", stmt.value)
 
     override fun visitVarStmt(stmt: Stmt.Var): String =
-        parenthesize("var ${stmt.name.lexeme}", stmt.initializer)
+        if (stmt.initializer == null)
+            leaf("Stmt.Var", stmt.name.lexeme)
+        else
+            node("Stmt.Var ${stmt.name.lexeme}", stmt.initializer)
 
-    override fun visitWhileStmt(stmt: Stmt.While): String {
-        TODO("Not yet implemented")
-    }
+    override fun visitWhileStmt(stmt: Stmt.While): String =
+        node("Stmt.While", stmt.condition, stmt.body)
 
     // ===== Helpers =====
-    private fun parenthesize(name: String, vararg exprs: Expr): String =
-        buildString {
-            append("(").append(name)
-            for (expr in exprs) append(" ").append(expr.accept(this@AstFormatter))
-            append(")")
+
+    private fun node(name: String, vararg children: Any?): String {
+        val filtered = children.filterNotNull()
+        if (filtered.isEmpty()) return name
+
+        return buildString {
+            append(name)
+            filtered.forEachIndexed { i, child ->
+                append("\n")
+                val isLast = i == filtered.lastIndex
+                val prefix = if (isLast) "└─ " else "├─ "
+                val continuePrefix = if (isLast) "   " else "│  "
+
+                val childStr = childToString(child)
+                val lines = childStr.lines()
+
+                append("   $prefix${lines.first()}")
+                for (line in lines.drop(1)) {
+                    append("\n   $continuePrefix$line")
+                }
+            }
+        }
+    }
+
+    private fun leaf(name: String, value: String? = null): String =
+        if (value == null) name else "$name \"$value\""
+
+    private fun childToString(child: Any): String =
+        when (child) {
+            is Expr -> child.accept(this)
+            is Stmt -> child.accept(this)
+            else -> child.toString()
         }
 }
