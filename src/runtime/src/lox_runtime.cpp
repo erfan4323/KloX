@@ -1,4 +1,5 @@
 #include "lox_runtime.h"
+#include <cwchar>
 
 double asNumber(const Value &v) {
   if (is<double>(v))
@@ -81,17 +82,17 @@ bool greater(const Value &a, const Value &b) {
   return asNumber(a) > asNumber(b);
 }
 
-bool greaterEqual(const Value &a, const Value &b) {
+bool greater_equal(const Value &a, const Value &b) {
   return asNumber(a) >= asNumber(b);
 }
 
 bool less(const Value &a, const Value &b) { return asNumber(a) < asNumber(b); }
 
-bool lessEqual(const Value &a, const Value &b) {
+bool less_equal(const Value &a, const Value &b) {
   return asNumber(a) <= asNumber(b);
 }
 
-bool notEqual(const Value &a, const Value &b) { return !equal(a, b); }
+bool not_equal(const Value &a, const Value &b) { return !equal(a, b); }
 
 void print(const Value &v) {
   if (is<double>(v))
@@ -104,10 +105,18 @@ void print(const Value &v) {
     std::cout << "nil";
   else if (is<std::shared_ptr<LoxCallable>>(v))
     std::cout << "<fn>";
-  else if (is<std::shared_ptr<LoxInstance>>(v))
-    std::cout << "<instance>";
-  else
+  else if (is<std::shared_ptr<LoxInstance>>(v)) {
+    auto inst = std::get<std::shared_ptr<LoxInstance>>(v);
+    if (inst->klass)
+      std::cout << inst->klass->name << " instance";
+    else
+      std::cout << "<instance>";
+  } else if (is<std::shared_ptr<LoxClass>>(v)) {
+    auto klass = std::get<std::shared_ptr<LoxClass>>(v);
+    std::cout << klass->name;
+  } else
     std::cout << "<unknown>";
+
   std::cout << std::endl;
 }
 
@@ -141,5 +150,5 @@ Value LoxClass::call(const std::vector<Value> &args) {
     auto boundInit = std::make_shared<LoxBoundMethod>(init->second, instance);
     boundInit->call(args);
   }
-  return std::static_pointer_cast<LoxInstance>(instance);
+  return Value(instance);
 }

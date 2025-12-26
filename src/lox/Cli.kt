@@ -12,7 +12,12 @@ sealed class Command {
     data object Repl : Command() {
         var printAst: Boolean = false
     }
-    class Compile(val file: String, val target: Target) : Command()
+    class Compile(
+        val file: String,
+        val target: Target,
+        val outputCppFile: String,
+        val outputExecutable: String
+    ) : Command()
 }
 
 object Cli {
@@ -75,6 +80,14 @@ object Cli {
 
         var file: String? = null
         var target = Target.CEmitter
+        var outputCppFile: String? = null
+        var outputExecutable: String? = null
+
+        val projectDir = System.getProperty("user.dir")
+        val defaultBuildDir = "$projectDir/build"
+        val defaultCppFile = "$defaultBuildDir/out.cpp"
+        val defaultExeFile = "$defaultBuildDir/out${if (System.getProperty("os.name").startsWith("Windows")) ".exe" else ""}"
+
 
         var i = 0
         while (i < positionalAndOptions.size) {
@@ -94,6 +107,16 @@ object Cli {
                         )
                     }
                 }
+                "--cpp-file" -> {
+                    i++
+                    if (i >= positionalAndOptions.size) usageError("Missing path after --cpp-file")
+                    outputCppFile = positionalAndOptions[i]
+                }
+                "--exe-file" -> {
+                    i++
+                    if (i >= positionalAndOptions.size) usageError("Missing path after --exe-file")
+                    outputExecutable = positionalAndOptions[i]
+                }
                 else -> {
                     if (file != null) usageError("Only one source file allowed")
                     file = positionalAndOptions[i]
@@ -107,7 +130,12 @@ object Cli {
             usageError("No input file specified for compile")
         }
 
-        return Command.Compile(file, target)
+        return Command.Compile(
+            file,
+            target,
+            outputCppFile ?: defaultCppFile,
+            outputExecutable ?: defaultExeFile
+        )
     }
 
     private fun extractCommonFlags(args: Array<String>): Pair<List<String>, Boolean> {

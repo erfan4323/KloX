@@ -10,13 +10,14 @@
 #include <variant>
 #include <vector>
 
-using Value = std::variant<double, std::string, bool, std::nullptr_t,
-                           std::shared_ptr<struct LoxCallable>,
-                           std::shared_ptr<struct LoxInstance>>;
-
 struct LoxCallable;
 struct LoxInstance;
 struct LoxClass;
+
+using Value =
+    std::variant<double, std::string, bool, std::nullptr_t,
+                 std::shared_ptr<LoxCallable>, std::shared_ptr<LoxInstance>,
+                 std::shared_ptr<LoxClass>>;
 
 template <typename T> bool is(const Value &v) {
   return std::holds_alternative<T>(v);

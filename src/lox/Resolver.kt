@@ -225,7 +225,7 @@ private enum class FunctionType {
     METHOD,
 }
 
-private enum class ClassType {
+enum class ClassType {
     NONE,
     CLASS,
     SUBCLASS

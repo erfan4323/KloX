@@ -16,28 +16,84 @@ class Lox() {
             is Command.Repl -> {
                 runPrompt(Command.Repl.printAst)
             }
-            is Command.Compile -> compile(command.file, command.target)
+            is Command.Compile -> compile(command.file, command.target, command.outputCppFile, command.outputExecutable)
         }
     }
 
-    private fun compile(path: String, target: Target) {
+    private fun compile(path: String, target: Target, outputCppFile: String, outputExecutable: String) {
+        // Read source file and remove BOM
         val source = File(path).readText(Charsets.UTF_8).trimStart('\uFEFF')
 
-        val scanner = Scanner(source)
-        val tokens = scanner.scanTokens()
-        val parser = Parser(tokens)
-        val statements = parser.parse()
+        // Scan, parse, and resolve
+        val tokens = Scanner(source).scanTokens()
+        val statements = Parser(tokens).parse()
 
         if (hadError) exitProcess(65)
 
-        val resolver = Resolver(interpreter)
-        resolver.resolve(statements)
+        Resolver(interpreter).apply { resolve(statements) }
 
         if (hadError) exitProcess(65)
 
-        // Placeholder for actual compilation logic
-        println("Compiled '$path' to $target (compilation not yet implemented)")
-        // In the future, you can emit bytecode, JVM class files, etc. here
+        // Generate C++ code
+        val cppCode = CppCodeGenerator().generate(statements)
+
+        // Ensure output folder exists
+        val outputFile = File(outputCppFile)
+        val outputFolder = outputFile.parentFile ?: File(".")
+        outputFolder.mkdirs()
+        File(outputCppFile).writeText(cppCode)
+
+        // Copy runtime files to output folder
+        val projectDir = System.getProperty("user.dir")
+        val runtimeFiles = listOf("lox_runtime.cpp", "lox_runtime.h").map { File("$projectDir/src/runtime/src/$it") }
+
+        runtimeFiles.forEach { src ->
+            val dest = File(outputFolder, src.name)
+            src.copyTo(dest, overwrite = true)
+        }
+
+        // Determine OS and prepare compile command
+        val isWindows = System.getProperty("os.name").startsWith("Windows")
+        val runtimePathCopied = File(outputFolder, "lox_runtime.cpp").absolutePath
+
+//        val compileCmd = if (isWindows) {
+//            listOf("cl", "/std:c++17", outputCppFile, runtimePathCopied, "/Fe:$outputExecutable")
+//        } else {
+//            listOf("g++", "-std=c++17", outputCppFile, runtimePathCopied, "-o", outputExecutable)
+//        }
+
+        val compileCmd = listOf(
+            "g++",
+            "-std=c++17",
+            outputCppFile,
+            runtimePathCopied,
+            "-o",
+            outputExecutable
+        )
+
+        // Run the compiler
+        val exitCode = runCmd(compileCmd)
+        if (exitCode != 0) {
+            println("C++ compilation failed with code $exitCode")
+            hadError = true
+        }
+
+    }
+
+    fun runCmd(
+        cmd: List<String>,
+        workingDir: File? = null,
+        inheritIO: Boolean = true,
+        env: Map<String, String> = emptyMap()
+    ): Int {
+        val builder = ProcessBuilder(cmd)
+
+        workingDir?.let(builder::directory)
+        if (inheritIO) builder.inheritIO()
+        builder.environment().putAll(env)
+
+        val process = builder.start()
+        return process.waitFor()
     }
 
     private fun runPrompt(printAst: Boolean) {
@@ -151,7 +207,6 @@ class Lox() {
         if (hadError) return
 
         interpreter.interpret(statements)
-        println(printAst)
         if (printAst)
         {
             println("----------------|Ast|----------------")
