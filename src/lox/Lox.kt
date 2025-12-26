@@ -56,14 +56,9 @@ class Lox() {
         val isWindows = System.getProperty("os.name").startsWith("Windows")
         val runtimePathCopied = File(outputFolder, "lox_runtime.cpp").absolutePath
 
-//        val compileCmd = if (isWindows) {
-//            listOf("cl", "/std:c++17", outputCppFile, runtimePathCopied, "/Fe:$outputExecutable")
-//        } else {
-//            listOf("g++", "-std=c++17", outputCppFile, runtimePathCopied, "-o", outputExecutable)
-//        }
-
         val compileCmd = listOf(
             "g++",
+            "-O3",
             "-std=c++17",
             outputCppFile,
             runtimePathCopied,
@@ -86,6 +81,8 @@ class Lox() {
         inheritIO: Boolean = true,
         env: Map<String, String> = emptyMap()
     ): Int {
+        println("command: ${cmd.joinToString(" ")}")
+
         val builder = ProcessBuilder(cmd)
 
         workingDir?.let(builder::directory)
@@ -99,7 +96,7 @@ class Lox() {
     private fun runPrompt(printAst: Boolean) {
         val reader = BufferedReader(InputStreamReader(System.`in`))
 
-        println(Ansi.bold("Welcome to KloX REPL (Kotlin Lox)"))
+        println(Ansi.blue(Ansi.bold("Welcome to KloX REPL (Kotlin Lox)")))
         println("Type ${Ansi.cyan(":help")} for commands, or start typing Lox code.")
         println("Press Ctrl+D or type ${Ansi.cyan(":quit")} to exit.\n")
 
@@ -228,12 +225,12 @@ class Lox() {
         )
 
         private fun report(line: Int, where: String, message: String) {
-            eprintln("[Line $line] Error$where: $message")
+            eprintln(Ansi.red("[Line $line] Error$where: $message"))
             hadError = true
         }
 
         fun runtimeError(error: RunTimeError) {
-            eprintln("[line ${error.token.line}] Runtime Error: ${error.message}")
+            eprintln(Ansi.red("[line ${error.token.line}] Runtime Error: ${error.message}"))
             hadRuntimeError = true
         }
 
