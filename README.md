@@ -59,12 +59,7 @@ Examples:
 Source: https://github.com/erfan4323/KloX
 ```
 ## Lox Language Grammar
-```ebnf
-==============================
-LOX LANGUAGE GRAMMAR
-(Crafting Interpreters – Appendix I)
-==============================
-
+```antlr
 ------------------------------
 SYNTAX GRAMMAR
 ------------------------------
