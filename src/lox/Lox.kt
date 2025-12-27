@@ -61,6 +61,7 @@ class Lox() {
             "g++",
             "-O3",
             "-std=c++17",
+            "-march=native", "-flto", "-DNDEBUG",
             outputCppFile,
             runtimePathCopied,
             "-o",
