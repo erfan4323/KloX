@@ -17,6 +17,7 @@ class Lox() {
                 runPrompt(Command.Repl.printAst)
             }
             is Command.Compile -> compile(command.file, command.target, command.outputCppFile, command.outputExecutable)
+            is Command.Help -> Cli.printHelp()
         }
     }
 

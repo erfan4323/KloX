@@ -18,6 +18,7 @@ sealed class Command {
         val outputCppFile: String,
         val outputExecutable: String
     ) : Command()
+    data object Help : Command()
 }
 
 object Cli {
@@ -30,6 +31,10 @@ object Cli {
     fun parseArgs(args: Array<String>): Command {
         if (args.isEmpty()) {
             return Command.Repl.also { Command.Repl.printAst = false }
+        }
+
+        if (args.any { it == "--help" || it == "-h" }) {
+            return Command.Help
         }
 
         val (positional, printAstFlag) = extractCommonFlags(args)
@@ -166,24 +171,45 @@ object Cli {
     }
 
     private fun usageError(message: String): Nothing {
-        println(
-            """
-            $message
-
-            Usage:
-              kloX                                                      # Start REPL
-              kloX <file.lx>                                            # Run script directly
-              kloX run <file.lx> [--print-ast]                          # Run script
-              kloX repl [--print-ast]                                   # Start REPL
-              kloX compile <file.lx> [--target <target>] [--print-ast]  # Compile script to target
-
-            Options:
-              --print-ast       # Print AST after parsing (for run/repl)
-
-            Available targets: ${Target.entries.joinToString(", ") { it.name.lowercase() }}
-            """.trimIndent()
-        )
+        printHelp(message)
         exitProcess(64)
+    }
+
+    fun printHelp(prefixMessage: String? = null) {
+        val helpText = """
+            ${if (prefixMessage != null) "${Ansi.red("Error")}: $prefixMessage\n\n" else ""}${Ansi.bold("KloX")} - A Lox interpreter and compiler (with C++ transpiler)
+
+            ${Ansi.bold("Usage")}:
+              ${Ansi.cyan("kloX")}                          ${Ansi.dim("# Start interactive REPL")}
+              ${Ansi.cyan("kloX")} <file.lx>                ${Ansi.dim("# Run a script directly")}
+              ${Ansi.cyan("kloX")} run <file.lx>            ${Ansi.dim("# Explicitly run a script")}
+              ${Ansi.cyan("kloX")} repl                     ${Ansi.dim("# Start REPL")}
+              ${Ansi.cyan("kloX")} compile <file.lx>        ${Ansi.dim("# Compile to C++ or native")}
+
+            ${Ansi.bold("Commands")}:
+              run <file.lx>        Run a Lox script using the interpreter
+              repl                 Start an interactive REPL session
+              compile <file.lx>    Transpile to C++ or compile to native executable
+
+            ${Ansi.bold("Global Options")}:
+              --print-ast          Print the parsed AST (useful for debugging)
+              --help, -h           Show this help message
+
+            ${Ansi.bold("Compile Options")}:
+              --target <name>      Target backend: ${Target.entries.joinToString(", ") { Ansi.cyan(it.name.lowercase()) }} (default: cemitter)
+              --cpp-file <path>    Output C++ source file (default: build/out.cpp)
+              --exe-file <path>    Output executable path (default: build/out[.exe])
+
+            ${Ansi.bold("Examples")}:
+              kloX script.lx
+              kloX run script.lx --print-ast
+              kloX compile script.lx --target cemitter --cpp-file myprog.cpp
+              kloX compile script.lx --target x86_64 --exe-file bin/myapp
+
+            Source: https://github.com/erfan4323/KloX
+        """.trimIndent()
+
+        println(helpText)
     }
 }
 
