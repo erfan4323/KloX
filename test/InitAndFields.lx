@@ -1,0 +1,13 @@
+﻿class Person {
+  init(first, last) {
+    this.first = first;
+    this.last = last;
+  }
+
+  fullName() {
+    return this.first + " " + this.last;
+  }
+}
+
+var p = Person("Jane", "Doe");
+print p.fullName();
