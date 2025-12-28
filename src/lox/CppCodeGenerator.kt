@@ -1,6 +1,5 @@
 ﻿package lox
 
-
 class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     private val code = StringBuilder()
     private var indentLevel = 0
@@ -123,7 +122,6 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         if (currentClass != ClassType.SUBCLASS) throw IllegalStateException("super outside subclass")
         val superVar = superclassVar ?: throw IllegalStateException("superclass missing")
         val methodName = expr.method.lexeme
-//        return "std::make_shared<LoxFunction>($superVar->methods[\"$methodName\"], self)"
         return "std::make_shared<LoxBoundMethod>($superVar->methods[\"$methodName\"], self)"
     }
 
@@ -178,7 +176,6 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     override fun visitExpressionStmt(stmt: Stmt.Expression) {
         val exprCode = stmt.expression.accept(this)
 
-        // ignore no-op literal/variable/binary expressions used as statements
         if (exprCode == "nullptr") return
         if (stmt.expression is Expr.Literal || stmt.expression is Expr.Variable || stmt.expression is Expr.Binary) return
 
@@ -243,7 +240,6 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     }
 
     override fun visitVarStmt(stmt: Stmt.Var) {
-        // Optimize class instantiation patterns into INSTANCE macro
         if (stmt.initializer is Expr.Call && stmt.initializer.callee is Expr.Variable) {
             emitClassInstantiation(stmt.initializer, stmt.name.lexeme)
             return
@@ -275,41 +271,33 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         headers.forEach { appendLine(it) }
     }
 
-
     private inline fun withIndent(block: () -> Unit) {
         indentLevel++
         try { block() } finally { indentLevel-- }
     }
 
-
     private fun append(line: String) {
         code.append(" ".repeat(indentLevel)).append(line)
     }
 
-
     private fun appendLine(line: String) {
         code.appendLine(line)
     }
-
 
     private fun appendIndentedLine(line: String) {
         append(line)
         code.appendLine()
     }
 
-
     private fun currentScope(): MutableMap<String, String> = locals.last()
-
 
     private fun beginScope() {
         locals.addLast(mutableMapOf())
     }
 
-
     private fun endScope() {
         if (locals.size > 1) locals.removeLast()
     }
-
 
     private fun freshTemp(prefix: String = "temp"): String {
         tempId++
@@ -325,7 +313,6 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     }
 
     private fun resolveVar(name: String): String {
-        val iter = locals.iterator() // from oldest to newest
         val scopes = locals.toList()
         for (i in scopes.indices.reversed()) {
             scopes[i][name]?.let { return it }
@@ -333,23 +320,7 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         throw IllegalStateException("Undefined variable $name")
     }
 
-    // Ensure a Value expression becomes a variable when needed
-    private fun exprToVar(expr: Expr): String {
-        return when (expr) {
-            is Expr.Variable -> resolveVar(expr.name.lexeme)
-            is Expr.This -> "self"
-            else -> {
-                val codeStr = expr.accept(this)
-                val tmp = freshTemp("val")
-                appendIndentedLine("Value $tmp = $codeStr;")
-                tmp
-            }
-        }
-    }
-
-    // Convert an arbitrary Value expression to an instance pointer variable
     private fun valueToInstancePtr(valueCode: String): String {
-        // If it's already a known instance reference, return it directly
         if (valueCode == "self" || valueCode.endsWith("_inst")) return valueCode
 
 
@@ -358,12 +329,6 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         appendIndentedLine("Value $tmpVal = $valueCode;")
         appendIndentedLine("auto $tmpInst = std::get<std::shared_ptr<LoxInstance>>($tmpVal);")
         return tmpInst
-    }
-
-    private fun valueToCallablePtr(valueCode: String): String {
-        val tempCallable = freshTemp("callable")
-        appendIndentedLine("auto $tempCallable = std::get<std::shared_ptr<LoxCallable>>($valueCode);")
-        return tempCallable
     }
 
     private fun emitClassInstantiation(callExpr: Expr.Call, assignTo: String? = null): String {

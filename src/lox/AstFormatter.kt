@@ -61,7 +61,7 @@ class AstFormatter : Expr.Visitor<String>, Stmt.Visitor<String> {
 
     override fun visitFunctionStmt(stmt: Stmt.Function): String =
         buildString {
-            val name = stmt.name?.lexeme ?: "<anonymous>"
+            val name = stmt.name.lexeme
             append("Stmt.Function \"$name\"")
 
             // Always show parameters as separate lines (if any)
@@ -73,7 +73,6 @@ class AstFormatter : Expr.Visitor<String>, Stmt.Visitor<String> {
 
             // Always show body, even if empty
             val bodyPrefix = if (stmt.params.isEmpty()) "└─ " else "├─ "
-            val bodyContinue = if (stmt.params.isEmpty()) "   " else "│  "
 
             append("\n $bodyPrefix body:")
             if (stmt.body.isEmpty()) {
@@ -104,10 +103,7 @@ class AstFormatter : Expr.Visitor<String>, Stmt.Visitor<String> {
         if (stmt.value == null) leaf("Stmt.Return") else node("Stmt.Return", stmt.value)
 
     override fun visitVarStmt(stmt: Stmt.Var): String =
-        if (stmt.initializer == null)
-            leaf("Stmt.Var", stmt.name.lexeme)
-        else
-            node("Stmt.Var ${stmt.name.lexeme}", stmt.initializer)
+        node("Stmt.Var ${stmt.name.lexeme}", stmt.initializer)
 
     override fun visitWhileStmt(stmt: Stmt.While): String =
         node("Stmt.While", stmt.condition, stmt.body)
