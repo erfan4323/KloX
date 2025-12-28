@@ -1,0 +1,8 @@
+﻿class Greeter {
+  greet(name) {
+    print "Hello " + name + "!";
+  }
+}
+
+var g = Greeter();
+g.greet("Lox User");

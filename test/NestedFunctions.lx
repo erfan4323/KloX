@@ -1,0 +1,8 @@
+﻿fun outer(num) {
+  fun inner(x) {
+    return x * 2;
+  }
+  return inner(num);
+}
+
+print outer(5);

@@ -1,0 +1,6 @@
+﻿var value = 5;
+if (value > 10) {
+  print "Greater";
+} else {
+  print "Not greater";
+}
