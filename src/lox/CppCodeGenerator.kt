@@ -61,38 +61,46 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     }
 
     override fun visitCallExpr(expr: Expr.Call): String {
-        val callee = expr.callee.accept(this)
-        val args = expr.arguments.joinToString(", ") { it.accept(this) }
+        when (val callee = expr.callee) {
+            is Expr.Variable -> {
+                throw IllegalStateException("Class instantiation must be handled in assignment or var declaration context")
+            }
 
-        if (expr.callee is Expr.Get || expr.callee is Expr.Super || expr.callee is Expr.This) {
-            // Value wrapper -> extract callable
+            is Expr.Get -> {
+                val objLexeme = when (callee.obj) {
+                    is Expr.Variable -> callee.obj.name.lexeme
+                    is Expr.This -> "this"
+                    else -> throw IllegalStateException("Method calls only supported on variables or 'this' for now")
+                }
+                val instVar = resolveVar(objLexeme)
+                val argsCode = expr.arguments.joinToString(", ") { it.accept(this) }
+                append("CALL_METHOD($instVar, ${callee.name.lexeme}${if (argsCode.isEmpty()) "" else ", $argsCode"});")
+                return "nullptr"
+            }
 
-            // Declare a temporary Value for the callee
-            val tmpVar = declareCountedVar("tmpValue")
-            val callablePtr = declareCountedVar("callablePtr")
+            is Expr.Super -> {
+                val argsCode = expr.arguments.joinToString(", ") { it.accept(this) }
+                append("CALL_METHOD(self, ${callee.method.lexeme}${if (argsCode.isEmpty()) "" else ", $argsCode"});")
+                return "nullptr"
+            }
 
-            append("Value $tmpVar = $callee;")
-            append("auto* $callablePtr = std::get_if<std::shared_ptr<LoxCallable>>(&$tmpVar);")
-            append("if (!$callablePtr) throw std::runtime_error(\"Value is not callable\");")
-
-            // Call the extracted callable
-            return "(*$callablePtr)->call({$args})"
-        } else {
-            // Already a shared_ptr<LoxCallable> -> call directly
-            return "$callee->call({$args})"
+            else -> {
+                val calleeCode = callee.accept(this)
+                val argsCode = expr.arguments.joinToString(", ") { it.accept(this) }
+                return "$calleeCode->call({$argsCode})"
+            }
         }
     }
 
 
     override fun visitGetExpr(expr: Expr.Get): String {
-        val obj = expr.obj.accept(this)
-        val property = expr.name.lexeme
-
-        if (expr.obj is Expr.This) {
-            return "self->get(\"$property\")"
+        val objLexeme = when (expr.obj) {
+            is Expr.Variable -> expr.obj.name.lexeme
+            is Expr.This -> "this"
+            else -> throw IllegalStateException("Field gets only supported on variables or 'this' for now")
         }
-
-        return "std::get<std::shared_ptr<LoxInstance>>($obj)->get(\"$property\")"
+        val instVar = resolveVar(objLexeme)
+        return "GET_FIELD($instVar, ${expr.name.lexeme})"
     }
 
     override fun visitGroupingExpr(expr: Expr.Grouping): String {
@@ -121,9 +129,14 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     }
 
     override fun visitSetExpr(expr: Expr.Set): String {
-        val obj = expr.obj.accept(this)
+        val objLexeme = when (expr.obj) {
+            is Expr.Variable -> expr.obj.name.lexeme
+            is Expr.This -> "this"
+            else -> throw IllegalStateException("Field sets only supported on variables or 'this' for now")
+        }
+        val instVar = resolveVar(objLexeme)
         val value = expr.value.accept(this)
-        append("std::get<std::shared_ptr<LoxInstance>>($obj)->set(\"${expr.name.lexeme}\", $value);")
+        append("SET_FIELD($instVar, ${expr.name.lexeme}, $value);")
         return value
     }
 
@@ -131,7 +144,6 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         if (currentClass != ClassType.SUBCLASS) throw IllegalStateException("super outside subclass")
         val superVar = superclassVar!!
         val methodName = expr.method.lexeme
-        // Directly return the bound method and let the surrounding Call handle .call()
         return "std::make_shared<LoxBoundMethod>($superVar->methods[\"$methodName\"], self)"
     }
 
@@ -164,79 +176,74 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
 
     override fun visitClassStmt(stmt: Stmt.Class) {
         val oldClass = currentClass
-        val oldSuper = superclassVar
         currentClass = if (stmt.superclass != null) ClassType.SUBCLASS else ClassType.CLASS
-        superclassVar = stmt.superclass?.let { it.accept(this) }  // e.g., "Doughnut_1"
+        superclassVar = stmt.superclass?.let { resolveVar(it.name.lexeme) }
 
         try {
-            val className = declareCountedVar(stmt.name.lexeme)  // e.g., "BostonCream_2"
-            val superRef = superclassVar ?: "std::shared_ptr<LoxClass>(nullptr)"
+            val className = declareCountedVar(stmt.name.lexeme)
 
             append("std::unordered_map<std::string, std::shared_ptr<LoxCallable>> ${className}_methods;")
 
             stmt.methods.forEach { method ->
-                val methodName = method.name.lexeme
-                visitFunctionStmt(method)
-                val funcVar = resolveVar(methodName)
-                append("${className}_methods[\"$methodName\"] = $funcVar;")
+                method.accept(this)  // Generates DEFINE_METHOD + assignment to temp var
+                val funcVar = locals.peek()[method.name.lexeme]!!
+                append("${className}_methods[\"${method.name.lexeme}\"] = $funcVar;")
             }
 
-            append("auto $className = std::make_shared<LoxClass>(\"${stmt.name.lexeme}\", $superRef, ${className}_methods);")
+            val superRef = superclassVar ?: "nullptr"
+            append("DEFINE_CLASS($className, $superRef);")
         } finally {
             currentClass = oldClass
-            superclassVar = oldSuper
+            superclassVar = null
         }
     }
 
     override fun visitExpressionStmt(stmt: Stmt.Expression) {
-        append("${stmt.expression.accept(this)};")
+        val exprCode = stmt.expression.accept(this)
+
+        if (exprCode == "nullptr") {
+            return
+        }
+
+        if (stmt.expression is Expr.Literal || stmt.expression is Expr.Variable || stmt.expression is Expr.Binary) {
+            return
+        }
+
+        append("$exprCode;")
     }
 
     override fun visitFunctionStmt(stmt: Stmt.Function) {
-        val funcName = declareCountedVar(stmt.name.lexeme)  // e.g., "cook_2"
+        val funcName = declareCountedVar(stmt.name.lexeme)
         val isMethod = currentClass != ClassType.NONE
-        val isInitializer = stmt.name.lexeme == "init"
-
-        val paramLines = stmt.params
-            .mapIndexed { i, param ->
-                val paramName = declareCountedVar(param.lexeme)
-                "Value $paramName = args[${i + if (isMethod) 1 else 0}];"
-            }
-            .joinToString("\n")
+        val arity = if (isMethod) stmt.params.size + 1 else stmt.params.size
 
         beginScope()
+        if (isMethod) locals.peek()["this"] = "self"
 
-        if (isMethod) {
-            // Declare 'this' and force it to use the plain name "this"
-            locals.peek()["this"] = "this"
-        }
-
-        val arity = if (isMethod) stmt.params.size + 1 else stmt.params.size
-        append("std::shared_ptr<LoxFunction> $funcName;")
-        append("$funcName = std::make_shared<LoxFunction>(${arity}, [&$funcName](const std::vector<Value>& args) mutable -> Value {")
+        append("DEFINE_METHOD($funcName, $arity, [&$funcName](const std::vector<Value>& args) mutable -> Value {")
         indentLevel++
 
         if (isMethod) {
-            append("if (args.size() != ${stmt.params.size + 1}) throw std::runtime_error(\"Wrong arity.\");")
-            append("auto self = std::get<std::shared_ptr<LoxInstance>>(args[0]);")
+            append("CHECK_ARITY(${stmt.params.size + 1});")
+            append("auto self = SELF;")
         } else {
-            append("if (args.size() != ${stmt.params.size}) throw std::runtime_error(\"Wrong arity.\");")
+            append("CHECK_ARITY(${stmt.params.size});")
         }
 
-        if (paramLines.isNotEmpty()) {
-            append(paramLines)
+        stmt.params.forEachIndexed { i, param ->
+            val paramName = declareCountedVar(param.lexeme)
+            val argIndex = if (isMethod) i + 1 else i
+            append("Value $paramName = args[$argIndex];")
         }
 
         stmt.body.forEach { it.accept(this) }
 
-        if (isMethod && isInitializer) {
-            append("return self;")
-        } else {
-            append("return nullptr;")
-        }
+        val returnExpr = if (isMethod && stmt.name.lexeme == "init") "self" else "nullptr"
+        append("return $returnExpr;")
 
         indentLevel--
         append("});")
+
         endScope()
     }
 
@@ -256,7 +263,7 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     }
 
     override fun visitPrintStmt(stmt: Stmt.Print) {
-        append("print(Value(${stmt.expression.accept(this)}));")
+        append("PRINT(${stmt.expression.accept(this)});")
     }
 
     override fun visitReturnStmt(stmt: Stmt.Return) {
@@ -269,9 +276,14 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     }
 
     override fun visitVarStmt(stmt: Stmt.Var) {
-        val init = stmt.initializer?.accept(this) ?: "nullptr"
-        val name = declareCountedVar(stmt.name.lexeme)
-        append("Value $name = $init;")
+        if (stmt.initializer is Expr.Call && stmt.initializer.callee is Expr.Variable) {
+            emitClassInstantiation(stmt.initializer, stmt.name.lexeme)
+        } else {
+            val init = stmt.initializer.accept(this)
+            val name = declareCountedVar(stmt.name.lexeme)
+            append("Value $name = $init;")
+            locals.peek()[stmt.name.lexeme] = name
+        }
     }
 
     override fun visitWhileStmt(stmt: Stmt.While) {
@@ -299,10 +311,22 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         return scopedName
     }
 
-    private fun declareVar(name: String): String {
-        val scopedName = "${name}_${name.length}"
-        locals.peek()[name] = scopedName
-        return scopedName
+    private fun emitClassInstantiation(callExpr: Expr.Call, assignTo: String? = null): String {
+        require(callExpr.callee is Expr.Variable) { "Expected class name variable" }
+
+        val classVar = resolveVar(callExpr.callee.name.lexeme)  // e.g., "Cake_1"
+
+        val valueVar = declareCountedVar(assignTo ?: "instance")
+
+        val argsCode = callExpr.arguments.joinToString(", ") { it.accept(this) }
+        append("INSTANCE($valueVar, $classVar${if (argsCode.isEmpty()) "" else ", $argsCode"});")
+
+        if (assignTo != null) {
+            val instVar = "${valueVar}_inst"
+            locals.peek()[assignTo] = instVar
+        }
+
+        return valueVar
     }
 
     private fun resolveVar(name: String): String {

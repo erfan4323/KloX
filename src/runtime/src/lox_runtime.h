@@ -105,4 +105,40 @@ struct LoxFunction : LoxCallable {
   }
 };
 
+#define DEFINE_CLASS(name, superclass) \
+    auto name = std::make_shared<LoxClass>(#name, superclass, name##_methods);
+
+#define METHOD(class_name, lexeme, var) \
+    class_name##_methods[lexeme] = var;
+
+#define DEFINE_METHOD(name, arity, body) \
+    std::shared_ptr<LoxFunction> name = std::make_shared<LoxFunction>(arity, body);
+
+#define INSTANCE(var, class_obj, ...) \
+    Value var = class_obj->call({__VA_ARGS__}); \
+    auto var##_inst = std::get<std::shared_ptr<LoxInstance>>(var);
+
+#define SET_FIELD(inst, field, value) \
+    inst->set(#field, value);
+
+#define GET_FIELD(inst, field) \
+    inst->get(#field)
+
+#define CALL_METHOD(inst, method, ...) \
+    do { \
+        Value tmp = inst->get(#method); \
+        auto* callable = std::get_if<std::shared_ptr<LoxCallable>>(&tmp); \
+        if (!callable) throw std::runtime_error("Not callable: " #method); \
+        (*callable)->call({ __VA_ARGS__ }); \
+    } while(0)
+
+#define PRINT(expr) print(Value(expr))
+
+#define VAR(name, value) Value name = value;
+
+#define SELF std::get<std::shared_ptr<LoxInstance>>(args[0])
+
+#define CHECK_ARITY(n) \
+    if (args.size() != n) throw std::runtime_error("Expected " #n " arguments");
+
 #endif
