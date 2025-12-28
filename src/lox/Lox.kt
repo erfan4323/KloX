@@ -5,137 +5,85 @@ import java.io.File
 import java.io.InputStreamReader
 import kotlin.system.exitProcess
 
-class Lox() {
+class Lox {
     private val interpreter = Interpreter()
 
     fun runMain(args: Array<String>) {
         when (val command = Cli.parseArgs(args)) {
-            is Command.Run -> {
-                runFile(command.file, command.printAst)
-            }
-            is Command.Repl -> {
-                runPrompt(Command.Repl.printAst)
-            }
+            is Command.Run -> runFile(command.file, command.printAst)
+            is Command.Repl -> runPrompt(Command.Repl.printAst)
             is Command.Compile -> compile(command.file, command.target, command.outputCppFile, command.outputExecutable)
             is Command.Help -> Cli.printHelp()
         }
     }
 
     private fun compile(path: String, target: Target, outputCppFile: String, outputExecutable: String) {
-        // Read source file and remove BOM
         val source = File(path).readText(Charsets.UTF_8).trimStart('\uFEFF')
-
-        // Scan, parse, and resolve
         val tokens = Scanner(source).scanTokens()
         val statements = Parser(tokens).parse()
-
         if (hadError) exitProcess(65)
 
         Resolver(interpreter).apply { resolve(statements) }
-
         if (hadError) exitProcess(65)
 
-        // Generate C++ code
         val cppCode = CppCodeGenerator().generate(statements)
+        val outputFile = File(outputCppFile).apply { parentFile?.mkdirs() }
+        outputFile.writeText(cppCode)
 
-        // Ensure output folder exists
-        val outputFile = File(outputCppFile)
-        val outputFolder = outputFile.parentFile ?: File(".")
-        outputFolder.mkdirs()
-        File(outputCppFile).writeText(cppCode)
+        copyRuntimeFiles(outputFile.parentFile ?: File("."))
+        compileCpp(outputCppFile, outputExecutable, outputFile.parentFile ?: File("."))
+    }
 
-        // Copy runtime files to output folder
+    private fun copyRuntimeFiles(outputDir: File) {
         val projectDir = System.getProperty("user.dir")
-        val runtimeFiles = listOf("lox_runtime.cpp", "lox_runtime.h").map { File("$projectDir/src/runtime/src/$it") }
-
-        runtimeFiles.forEach { src ->
-            val dest = File(outputFolder, src.name)
-            src.copyTo(dest, overwrite = true)
+        listOf("lox_runtime.cpp", "lox_runtime.h").forEach { fileName ->
+            File("$projectDir/src/runtime/src/$fileName").copyTo(File(outputDir, fileName), overwrite = true)
         }
+    }
 
-        // Determine OS and prepare compile command
-        val isWindows = System.getProperty("os.name").startsWith("Windows")
-        val runtimePathCopied = File(outputFolder, "lox_runtime.cpp").absolutePath
-
+    private fun compileCpp(outputCppFile: String, outputExecutable: String, outputDir: File) {
         val compileCmd = listOf(
-            "g++",
-            "-O3",
-            "-std=c++17",
-            "-march=native", "-flto", "-DNDEBUG",
-            outputCppFile,
-            runtimePathCopied,
-            "-o",
-            outputExecutable
+            "g++", "-O3", "-std=c++17", "-march=native", "-flto", "-DNDEBUG",
+            outputCppFile, File(outputDir, "lox_runtime.cpp").absolutePath,
+            "-o", outputExecutable
         )
-
-        // Run the compiler
         val exitCode = runCmd(compileCmd)
         if (exitCode != 0) {
             println("C++ compilation failed with code $exitCode")
             hadError = true
         }
-
     }
 
-    fun runCmd(
-        cmd: List<String>,
-        workingDir: File? = null,
-        inheritIO: Boolean = true,
-        env: Map<String, String> = emptyMap()
-    ): Int {
+    fun runCmd(cmd: List<String>, workingDir: File? = null, inheritIO: Boolean = true, env: Map<String, String> = emptyMap()): Int {
         println("command: ${cmd.joinToString(" ")}")
-
-        val builder = ProcessBuilder(cmd)
-
-        workingDir?.let(builder::directory)
-        if (inheritIO) builder.inheritIO()
-        builder.environment().putAll(env)
-
-        val process = builder.start()
-        return process.waitFor()
+        return ProcessBuilder(cmd).apply {
+            workingDir?.let(this::directory)
+            if (inheritIO) inheritIO()
+            environment().putAll(env)
+        }.start().waitFor()
     }
 
     private fun runPrompt(printAst: Boolean) {
         val reader = BufferedReader(InputStreamReader(System.`in`))
-
-        println(Ansi.blue(Ansi.bold("Welcome to KloX REPL (Kotlin Lox)")))
-        println("Type ${Ansi.cyan(":help")} for commands, or start typing Lox code.")
-        println("Press Ctrl+D or type ${Ansi.cyan(":quit")} to exit.\n")
+        printWelcome()
 
         val history = mutableListOf<Pair<String, Boolean>>()
         var pendingPrompt = true
 
         while (true) {
-            if (pendingPrompt) {
-                print(Ansi.prompt)
-                System.out.flush()
-            }
-
+            if (pendingPrompt) printPrompt()
             val line = reader.readLine() ?: break
-
             pendingPrompt = true
 
             when {
                 line.isBlank() -> {}
-
-                line.startsWith(":") -> {
-                    handleReplCommand(line.trim(), history)
-                }
-
+                line.startsWith(":" ) -> handleReplCommand(line.trim(), history)
                 else -> {
-
                     hadError = false
                     hadRuntimeError = false
-
                     run(line, printAst)
-
-                    if (hadError || hadRuntimeError) {
-                        pendingPrompt = false
-                        history.add(line to false)
-                    }
-                    else {
-                        history.add(line to true)
-                    }
+                    history.add(line to !(hadError || hadRuntimeError))
+                    pendingPrompt = !(hadError || hadRuntimeError)
                 }
             }
 
@@ -144,74 +92,74 @@ class Lox() {
         }
     }
 
+    private fun printWelcome() {
+        println(Ansi.blue(Ansi.bold("Welcome to KloX REPL (Kotlin Lox)")))
+        println("Type ${Ansi.cyan(":help")} for commands, or start typing Lox code.")
+        println("Press Ctrl+D or type ${Ansi.cyan(":quit")} to exit.\n")
+    }
+
+    private fun printPrompt() {
+        print(Ansi.prompt)
+        System.out.flush()
+    }
+
     private fun handleReplCommand(command: String, history: MutableList<Pair<String, Boolean>>) {
         when (command) {
-            ":help", ":h" -> {
-                println(
-                    """
-                ${Ansi.bold("KloX REPL Commands:")}
-                  :help, :h        Show this help
-                  :quit, :q        Exit the REPL
-                  :clear, :c       Clear the screen
-                  :history         Show command history
-                """.trimIndent()
-                )
-            }
+            ":help", ":h" -> printHelp()
+            ":quit", ":q" -> exitRepl()
+            ":clear", ":c" -> clearScreen()
+            ":history" -> printHistory(history)
+            else -> println(Ansi.red("Unknown command: $command. Type :help for help."))
+        }
+    }
 
-            ":quit", ":q" -> {
-                println(Ansi.yellow("Goodbye!"))
-                exitProcess(0)
-            }
+    private fun printHelp() {
+        println(Ansi.bold("KloX REPL Commands:"))
+        println("  :help, :h        Show this help")
+        println("  :quit, :q        Exit the REPL")
+        println("  :clear, :c       Clear the screen")
+        println("  :history         Show command history")
+    }
 
-            ":clear", ":c" -> {
-                print(Ansi.clearScreen)
-                System.out.flush()
-            }
+    private fun exitRepl() {
+        println(Ansi.yellow("Goodbye!"))
+        exitProcess(0)
+    }
 
-            ":history" -> {
-                history.forEachIndexed { i, (cmd, flag) ->
-                    if (flag) {
-                        println("${i + 1}: $cmd")
-                    } else {
-                        println("${Ansi.strike("${i + 1}: $cmd")} (not executed)")
-                    }
-                }
-            }
+    private fun clearScreen() {
+        print(Ansi.clearScreen)
+        System.out.flush()
+    }
 
-            else -> {
-                println(Ansi.red("Unknown command: $command. Type :help for help."))
-            }
+    private fun printHistory(history: List<Pair<String, Boolean>>) {
+        history.forEachIndexed { i, (cmd, executed) ->
+            println(if (executed) "${i + 1}: $cmd" else Ansi.strike("${i + 1}: $cmd") + " (not executed)")
         }
     }
 
     private fun runFile(path: String, printAst: Boolean) {
         val source = File(path).readText(Charsets.UTF_8).trimStart('\uFEFF')
         run(source, printAst)
-
         if (hadError) exitProcess(65)
         if (hadRuntimeError) exitProcess(70)
     }
 
     private fun run(source: String, printAst: Boolean) {
-        val scanner = Scanner(source)
-        val tokens = scanner.scanTokens()
-        val parser = Parser(tokens)
-        val statements = parser.parse()
-
+        val tokens = Scanner(source).scanTokens()
+        val statements = Parser(tokens).parse()
         if (hadError) return
 
-        val resolver = Resolver(interpreter)
-        resolver.resolve(statements)
-
+        Resolver(interpreter).resolve(statements)
         if (hadError) return
 
         interpreter.interpret(statements)
-        if (printAst)
-        {
-            println("----------------|Ast|----------------")
-            println(AstFormatter().print(statements))
-            println("-------------------------------------")
-        }
+        if (printAst) printAst(statements)
+    }
+
+    private fun printAst(statements: List<Stmt>) {
+        println("----------------|Ast|----------------")
+        println(AstFormatter().print(statements))
+        println("-------------------------------------")
     }
 
     companion object {
@@ -219,12 +167,7 @@ class Lox() {
         private var hadRuntimeError = false
 
         fun error(line: Int, message: String) = report(line, "", message)
-
-        fun error(token: Token, message: String) = report(
-            token.line,
-            if (token.type == TokenType.EOF) " at end" else " at '${token.lexeme}'",
-            message
-        )
+        fun error(token: Token, message: String) = report(token.line, if (token.type == TokenType.EOF) " at end" else " at '${token.lexeme}'", message)
 
         private fun report(line: Int, where: String, message: String) {
             eprintln(Ansi.red("[Line $line] Error$where: $message"))

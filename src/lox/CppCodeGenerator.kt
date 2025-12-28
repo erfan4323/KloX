@@ -5,36 +5,30 @@ import java.util.Stack
 class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     private val code = StringBuilder()
     private var indentLevel = 0
-    private val locals = Stack<MutableMap<String, String>>()
+    private val locals: ArrayDeque<MutableMap<String, String>> = ArrayDeque()
     private var currentClass: ClassType = ClassType.NONE
     private var superclassVar: String? = null
     private val varCounter = mutableMapOf<String, Int>()
-    private var tempCounter = 0
+    private var tempId = 0
 
     init {
-        locals.push(HashMap())
+        locals.addLast(mutableMapOf())
     }
 
     fun generate(statements: List<Stmt>): String {
         code.clear()
-        code.appendLine("#include \"lox_runtime.h\"")
-        code.appendLine("#include <iostream>")
-        code.appendLine("#include <memory>")
-        code.appendLine("#include <functional>")
-        code.appendLine("#include <variant>")
-        code.appendLine("")
-        code.appendLine("int main() {")
-        indentLevel = 1  // Start with one level of indent
+        emitHeaders()
 
-        statements.forEach { it.accept(this) }
 
-        code.appendLine("    return 0;")
-        code.appendLine("}")
+        appendIndentedLine("int main() {")
+        withIndent {
+            statements.forEach { it.accept(this@CppCodeGenerator) }
+            appendIndentedLine("return 0;")
+        }
+        appendIndentedLine("}")
+
+
         return code.toString()
-    }
-
-    private fun append(line: String) {
-        code.append("    ".repeat(indentLevel)).appendLine(line)
     }
 
     override fun visitAssignExpr(expr: Expr.Assign): String {
@@ -63,30 +57,26 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
 
     override fun visitCallExpr(expr: Expr.Call): String {
         val argsCode = expr.arguments.joinToString(", ") { it.accept(this) }
-        when (val callee = expr.callee) {
+
+        return when (val callee = expr.callee) {
             is Expr.Get -> {
                 val objCode = callee.obj.accept(this)
                 val instPtr = valueToInstancePtr(objCode)
-                return "CALL_METHOD($instPtr, ${callee.name.lexeme}${if (argsCode.isEmpty()) "" else ", $argsCode"})"
+                "CALL_METHOD($instPtr, ${callee.name.lexeme}${if (argsCode.isEmpty()) "" else ", $argsCode"})"
             }
 
             is Expr.Super -> {
-                if (currentClass != ClassType.SUBCLASS)
-                    throw RuntimeException("Cannot use 'super' outside a subclass.")
-
-                val superClassVar = superclassVar!!
+                if (currentClass != ClassType.SUBCLASS) throw RuntimeException("Cannot use 'super' outside a subclass.")
+                val superClassVar = superclassVar ?: throw IllegalStateException("superclass missing")
                 val methodName = callee.method.lexeme
-
-                tempCounter++
-                val boundVar = "super_bound_$tempCounter"
-
-                append("auto $boundVar = std::make_shared<LoxBoundMethod>($superClassVar->methods[\"$methodName\"], self);")
-                return "$boundVar->call({$argsCode});"
+                val boundVar = freshTemp("super_bound")
+                appendIndentedLine("auto $boundVar = std::make_shared<LoxBoundMethod>($superClassVar->methods[\"$methodName\"], self);")
+                "$boundVar->call({$argsCode});"
             }
 
             else -> {
                 val calleeCode = callee.accept(this)
-                return "$calleeCode->call({$argsCode})"
+                "$calleeCode->call({$argsCode})"
             }
         }
     }
@@ -126,13 +116,13 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         val objCode = expr.obj.accept(this)
         val instPtr = valueToInstancePtr(objCode)
         val value = expr.value.accept(this)
-        append("SET_FIELD($instPtr, ${expr.name.lexeme}, $value);")
+        appendIndentedLine("SET_FIELD($instPtr, ${expr.name.lexeme}, $value);")
         return value
     }
 
     override fun visitSuperExpr(expr: Expr.Super): String {
         if (currentClass != ClassType.SUBCLASS) throw IllegalStateException("super outside subclass")
-        val superVar = superclassVar!!
+        val superVar = superclassVar ?: throw IllegalStateException("superclass missing")
         val methodName = expr.method.lexeme
 //        return "std::make_shared<LoxFunction>($superVar->methods[\"$methodName\"], self)"
         return "std::make_shared<LoxBoundMethod>($superVar->methods[\"$methodName\"], self)"
@@ -157,34 +147,31 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
 
     override fun visitBlockStmt(stmt: Stmt.Block) {
         beginScope()
-        append("{")
-        indentLevel++
-        stmt.statements.forEach { it.accept(this) }
-        indentLevel--
-        append("}")
+        appendIndentedLine("{")
+        withIndent { stmt.statements.forEach { it.accept(this) } }
+        appendIndentedLine("}")
         endScope()
     }
 
     override fun visitClassStmt(stmt: Stmt.Class) {
-        val oldClass = currentClass
+        val previousClass = currentClass
         currentClass = if (stmt.superclass != null) ClassType.SUBCLASS else ClassType.CLASS
         superclassVar = stmt.superclass?.let { resolveVar(it.name.lexeme) }
 
         try {
             val className = declareCountedVar(stmt.name.lexeme)
-
-            append("std::unordered_map<std::string, std::shared_ptr<LoxCallable>> ${className}_methods;")
+            appendIndentedLine("std::unordered_map<std::string, std::shared_ptr<LoxCallable>> ${className}_methods;")
 
             stmt.methods.forEach { method ->
-                method.accept(this)  // Generates DEFINE_METHOD + assignment to temp var
-                val funcVar = locals.peek()[method.name.lexeme]!!
-                append("${className}_methods[\"${method.name.lexeme}\"] = $funcVar;")
+                method.accept(this)
+                val funcVar = currentScope()[method.name.lexeme] ?: throw IllegalStateException("method var missing")
+                appendIndentedLine("${className}_methods[\"${method.name.lexeme}\"] = $funcVar;")
             }
 
             val superRef = superclassVar ?: "nullptr"
-            append("DEFINE_CLASS($className, $superRef);")
+            appendIndentedLine("DEFINE_CLASS($className, $superRef);")
         } finally {
-            currentClass = oldClass
+            currentClass = previousClass
             superclassVar = null
         }
     }
@@ -192,15 +179,11 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     override fun visitExpressionStmt(stmt: Stmt.Expression) {
         val exprCode = stmt.expression.accept(this)
 
-        if (exprCode == "nullptr") {
-            return
-        }
+        // ignore no-op literal/variable/binary expressions used as statements
+        if (exprCode == "nullptr") return
+        if (stmt.expression is Expr.Literal || stmt.expression is Expr.Variable || stmt.expression is Expr.Binary) return
 
-        if (stmt.expression is Expr.Literal || stmt.expression is Expr.Variable || stmt.expression is Expr.Binary) {
-            return
-        }
-
-        append("$exprCode;")
+        appendIndentedLine("$exprCode;")
     }
 
     override fun visitFunctionStmt(stmt: Stmt.Function) {
@@ -209,147 +192,189 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         val arity = if (isMethod) stmt.params.size + 1 else stmt.params.size
 
         beginScope()
-        if (isMethod) locals.peek()["this"] = "self"
+        if (isMethod) currentScope()["this"] = "self"
 
-        append("DEFINE_METHOD($funcName, $arity, [&](const std::vector<Value>& args) mutable -> Value {")
-        indentLevel++
+        appendIndentedLine("DEFINE_METHOD($funcName, $arity, [&](const std::vector<Value>& args) mutable -> Value {")
+        withIndent {
+            if (isMethod) {
+                appendIndentedLine("CHECK_ARITY(${stmt.params.size + 1});")
+                appendIndentedLine("auto self = SELF;")
+            } else {
+                appendIndentedLine("CHECK_ARITY(${stmt.params.size});")
+            }
 
-        if (isMethod) {
-            append("CHECK_ARITY(${stmt.params.size + 1});")
-            append("auto self = SELF;")
-        } else {
-            append("CHECK_ARITY(${stmt.params.size});")
+            stmt.params.forEachIndexed { i, param ->
+                val paramName = declareCountedVar(param.lexeme)
+                val argIndex = if (isMethod) i + 1 else i
+                appendIndentedLine("Value $paramName = args[$argIndex];")
+            }
+
+            stmt.body.forEach { it.accept(this) }
+
+            val returnExpr = if (isMethod && stmt.name.lexeme == "init") "self" else "nullptr"
+            appendIndentedLine("return $returnExpr;")
         }
-
-        stmt.params.forEachIndexed { i, param ->
-            val paramName = declareCountedVar(param.lexeme)
-            val argIndex = if (isMethod) i + 1 else i
-            append("Value $paramName = args[$argIndex];")
-        }
-
-        stmt.body.forEach { it.accept(this) }
-
-        val returnExpr = if (isMethod && stmt.name.lexeme == "init") "self" else "nullptr"
-        append("return $returnExpr;")
-
-        indentLevel--
-        append("});")
+        appendIndentedLine("});")
 
         endScope()
     }
 
     override fun visitIfStmt(stmt: Stmt.If) {
         val condition = stmt.condition.accept(this)
-        append("if (isTruthy($condition)) {")
-        indentLevel++
-        stmt.thenBranch.accept(this)
-        indentLevel--
+        appendIndentedLine("if (isTruthy($condition)) {")
+        withIndent { stmt.thenBranch.accept(this) }
         if (stmt.elseBranch != null) {
-            append("} else {")
-            indentLevel++
-            stmt.elseBranch.accept(this)
-            indentLevel--
+            appendIndentedLine("} else {")
+            withIndent { stmt.elseBranch.accept(this) }
         }
-        append("}")
+        appendIndentedLine("}")
     }
 
     override fun visitPrintStmt(stmt: Stmt.Print) {
-        append("PRINT(${stmt.expression.accept(this)});")
+        appendIndentedLine("PRINT(${stmt.expression.accept(this)});")
     }
 
     override fun visitReturnStmt(stmt: Stmt.Return) {
         if (stmt.value == null) {
-            append("return nullptr;")
+            appendIndentedLine("return nullptr;")
         } else {
             val valueCode = stmt.value.accept(this)
-            append("return Value($valueCode);")
+            appendIndentedLine("return Value($valueCode);")
         }
     }
 
     override fun visitVarStmt(stmt: Stmt.Var) {
+        // Optimize class instantiation patterns into INSTANCE macro
         if (stmt.initializer is Expr.Call && stmt.initializer.callee is Expr.Variable) {
             emitClassInstantiation(stmt.initializer, stmt.name.lexeme)
-        } else {
-            val init = stmt.initializer.accept(this)
-            val name = declareCountedVar(stmt.name.lexeme)
-            append("Value $name = $init;")
-            locals.peek()[stmt.name.lexeme] = name
+            return
         }
+
+        val init = stmt.initializer.accept(this)
+        val name = declareCountedVar(stmt.name.lexeme)
+        appendIndentedLine("Value $name = $init;")
+        currentScope()[stmt.name.lexeme] = name
     }
 
     override fun visitWhileStmt(stmt: Stmt.While) {
         val condition = stmt.condition.accept(this)
-        append("while (isTruthy($condition)) {")
-        indentLevel++
-        stmt.body.accept(this)
-        indentLevel--
-        append("}")
+        appendIndentedLine("while (isTruthy($condition)) {")
+        withIndent { stmt.body.accept(this) }
+        appendIndentedLine("}")
     }
+
+    // ---------- Helpers ----------
+    private fun emitHeaders() {
+        val headers = listOf(
+            "#include \"lox_runtime.h\"",
+            "#include <iostream>",
+            "#include <memory>",
+            "#include <functional>",
+            "#include <variant>",
+            ""
+        )
+        headers.forEach { appendLine(it) }
+    }
+
+
+    private inline fun withIndent(block: () -> Unit) {
+        indentLevel++
+        try { block() } finally { indentLevel-- }
+    }
+
+
+    private fun append(line: String) {
+        code.append(" ".repeat(indentLevel)).append(line)
+    }
+
+
+    private fun appendLine(line: String) {
+        code.appendLine(line)
+    }
+
+
+    private fun appendIndentedLine(line: String) {
+        append(line)
+        code.appendLine()
+    }
+
+
+    private fun currentScope(): MutableMap<String, String> = locals.last()
+
 
     private fun beginScope() {
-        locals.push(HashMap())
+        locals.addLast(mutableMapOf())
     }
 
+
     private fun endScope() {
-        locals.pop()
+        if (locals.size > 1) locals.removeLast()
+    }
+
+
+    private fun freshTemp(prefix: String = "temp"): String {
+        tempId++
+        return "${prefix}_$tempId"
     }
 
     private fun declareCountedVar(name: String): String {
-        val count = varCounter.getOrDefault(name, 0) + 1
+        val count = (varCounter[name] ?: 0) + 1
         varCounter[name] = count
         val scopedName = "${name}_$count"
-        locals.peek()[name] = scopedName
+        currentScope()[name] = scopedName
         return scopedName
+    }
+
+    private fun resolveVar(name: String): String {
+        val iter = locals.iterator() // from oldest to newest
+        val scopes = locals.toList()
+        for (i in scopes.indices.reversed()) {
+            scopes[i][name]?.let { return it }
+        }
+        throw IllegalStateException("Undefined variable $name")
+    }
+
+    // Ensure a Value expression becomes a variable when needed
+    private fun exprToVar(expr: Expr): String {
+        return when (expr) {
+            is Expr.Variable -> resolveVar(expr.name.lexeme)
+            is Expr.This -> "self"
+            else -> {
+                val codeStr = expr.accept(this)
+                val tmp = freshTemp("val")
+                appendIndentedLine("Value $tmp = $codeStr;")
+                tmp
+            }
+        }
+    }
+
+    // Convert an arbitrary Value expression to an instance pointer variable
+    private fun valueToInstancePtr(valueCode: String): String {
+        // If it's already a known instance reference, return it directly
+        if (valueCode == "self" || valueCode.endsWith("_inst")) return valueCode
+
+
+        val tmpVal = freshTemp("val")
+        val tmpInst = freshTemp("inst")
+        appendIndentedLine("Value $tmpVal = $valueCode;")
+        appendIndentedLine("auto $tmpInst = std::get<std::shared_ptr<LoxInstance>>($tmpVal);")
+        return tmpInst
     }
 
     private fun emitClassInstantiation(callExpr: Expr.Call, assignTo: String? = null): String {
         require(callExpr.callee is Expr.Variable) { "Expected class name variable" }
 
         val classVar = resolveVar(callExpr.callee.name.lexeme)
-
         val valueVar = declareCountedVar(assignTo ?: "instance")
 
         val argsCode = callExpr.arguments.joinToString(", ") { it.accept(this) }
-        append("INSTANCE($valueVar, $classVar${if (argsCode.isEmpty()) "" else ", $argsCode"});")
+        appendIndentedLine("INSTANCE($valueVar, $classVar${if (argsCode.isEmpty()) "" else ", $argsCode"});")
 
         if (assignTo != null) {
             val instVar = "${valueVar}_inst"
-            locals.peek()[assignTo] = instVar
+            currentScope()[assignTo] = instVar
         }
 
         return valueVar
-    }
-
-    private fun exprToVar(expr: Expr): String {
-        when (expr) {
-            is Expr.Variable -> return resolveVar(expr.name.lexeme)
-            is Expr.This -> return "self"
-            else -> {
-                val code = expr.accept(this)
-                tempCounter++
-                val temp = "temp_$tempCounter"
-                append("Value $temp = $code;")
-                return temp
-            }
-        }
-    }
-
-    private fun valueToInstancePtr(valueCode: String): String {
-        if (valueCode == "self" || valueCode.endsWith("_inst")) {
-            return valueCode
-        }
-        tempCounter++
-        val tempValue = "temp_val_$tempCounter"
-        val tempInst = "temp_inst_$tempCounter"
-        append("Value $tempValue = $valueCode;")
-        append("auto $tempInst = std::get<std::shared_ptr<LoxInstance>>($tempValue);")
-        return tempInst
-    }
-
-    private fun resolveVar(name: String): String {
-        for (i in locals.indices.reversed()) {
-            locals[i][name]?.let { return it }
-        }
-        throw IllegalStateException("Undefined variable $name")
     }
 }
