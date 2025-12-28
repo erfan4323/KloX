@@ -1,6 +1,5 @@
 ﻿package lox
 
-import java.util.Stack
 
 class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
     private val code = StringBuilder()
@@ -359,6 +358,12 @@ class CppCodeGenerator : Expr.Visitor<String>, Stmt.Visitor<Unit> {
         appendIndentedLine("Value $tmpVal = $valueCode;")
         appendIndentedLine("auto $tmpInst = std::get<std::shared_ptr<LoxInstance>>($tmpVal);")
         return tmpInst
+    }
+
+    private fun valueToCallablePtr(valueCode: String): String {
+        val tempCallable = freshTemp("callable")
+        appendIndentedLine("auto $tempCallable = std::get<std::shared_ptr<LoxCallable>>($valueCode);")
+        return tempCallable
     }
 
     private fun emitClassInstantiation(callExpr: Expr.Call, assignTo: String? = null): String {

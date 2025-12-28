@@ -125,12 +125,12 @@ struct LoxFunction : LoxCallable {
     inst->get(#field)
 
 #define CALL_METHOD(inst, method, ...) \
-    do { \
+    ([&]() -> Value { \
         Value tmp = inst->get(#method); \
         auto* callable = std::get_if<std::shared_ptr<LoxCallable>>(&tmp); \
         if (!callable) throw std::runtime_error("Not callable: " #method); \
-        (*callable)->call({ __VA_ARGS__ }); \
-    } while(0)
+        return (*callable)->call({ __VA_ARGS__ }); \
+    }())
 
 #define PRINT(expr) print(Value(expr))
 
