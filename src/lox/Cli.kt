@@ -3,7 +3,7 @@
 import kotlin.system.exitProcess
 
 enum class Target {
-    CEmitter,
+    cppEmitter,
     X86_64
 }
 
@@ -84,7 +84,7 @@ object Cli {
         printAst = printAstFlag
 
         var file: String? = null
-        var target = Target.CEmitter
+        var target = Target.cppEmitter
         var outputCppFile: String? = null
         var outputExecutable: String? = null
 
@@ -196,14 +196,14 @@ object Cli {
               --help, -h           Show this help message
 
             ${Ansi.bold("Compile Options")}:
-              --target <name>      Target backend: ${Target.entries.joinToString(", ") { Ansi.cyan(it.name.lowercase()) }} (default: cemitter)
+              --target <name>      Target backend: ${Target.entries.joinToString(", ") { Ansi.cyan(it.name.lowercase()) }} (default: cppemitter)
               --cpp-file <path>    Output C++ source file (default: build/out.cpp)
               --exe-file <path>    Output executable path (default: build/out[.exe])
 
             ${Ansi.bold("Examples")}:
               kloX script.lx
               kloX run script.lx --print-ast
-              kloX compile script.lx --target cemitter --cpp-file myprog.cpp
+              kloX compile script.lx --target cppemitter --cpp-file myprog.cpp
               kloX compile script.lx --target x86_64 --exe-file bin/myapp
 
             Source: https://github.com/erfan4323/KloX
